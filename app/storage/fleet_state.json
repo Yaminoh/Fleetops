@@ -1,0 +1,172 @@
+{
+    "vehicles": {
+        "1": {
+            "id": 1,
+            "vehicle_code": "TRK-101",
+            "plate_number": "NKI-8821",
+            "type": "Heavy Cargo Truck",
+            "status": "Active",
+            "fuel_level": 88.5
+        },
+        "2": {
+            "id": 2,
+            "vehicle_code": "TRK-102",
+            "plate_number": "WAK-4092",
+            "type": "Refrigerated Transport",
+            "status": "Active",
+            "fuel_level": 74
+        },
+        "3": {
+            "id": 3,
+            "vehicle_code": "TRK-103",
+            "plate_number": "CBD-1204",
+            "type": "Container Hauler",
+            "status": "Active",
+            "fuel_level": 92
+        },
+        "4": {
+            "id": 4,
+            "vehicle_code": "TRK-104",
+            "plate_number": "NKL-3301",
+            "type": "Delivery Van",
+            "status": "Maintenance",
+            "fuel_level": 45
+        }
+    },
+    "drivers": {
+        "1": {
+            "id": 1,
+            "name": "Harvey Villarin",
+            "employee_id": "DRV-1001",
+            "role": "Senior Lead Driver",
+            "score": 9.8
+        },
+        "2": {
+            "id": 2,
+            "name": "Reybie Reforsado",
+            "employee_id": "DRV-1002",
+            "role": "Regional Logistics Driver",
+            "score": 9.6
+        },
+        "3": {
+            "id": 3,
+            "name": "Erwin Cober",
+            "employee_id": "DRV-1003",
+            "role": "Heavy Fleet Operator",
+            "score": 9.4
+        },
+        "4": {
+            "id": 4,
+            "name": "Daniella Agus",
+            "employee_id": "DRV-1004",
+            "role": "Express Dispatcher",
+            "score": 9.2
+        }
+    },
+    "locations": {
+        "1": {
+            "latitude": 14.5995,
+            "longitude": 120.9842,
+            "speed": 48,
+            "fuel_level": 88.5,
+            "timestamp": "2026-08-14 22:16:22"
+        },
+        "2": {
+            "latitude": 14.5547,
+            "longitude": 121.0244,
+            "speed": 22,
+            "fuel_level": 74,
+            "timestamp": "2026-08-14 22:16:22"
+        },
+        "3": {
+            "latitude": 14.6507,
+            "longitude": 121.0275,
+            "speed": 54,
+            "fuel_level": 92,
+            "timestamp": "2026-08-14 22:16:22"
+        },
+        "4": {
+            "latitude": 14.53,
+            "longitude": 120.98,
+            "speed": 0,
+            "fuel_level": 45,
+            "timestamp": "2026-08-14 22:16:22"
+        }
+    },
+    "trips": [
+        {
+            "id": 101,
+            "vehicle_id": 1,
+            "driver_id": 1,
+            "origin": "Port Area Pier 15, Manila",
+            "destination": "Quezon City Logistics Hub",
+            "origin_lat": 14.588,
+            "origin_lng": 120.967,
+            "dest_lat": 14.65,
+            "dest_lng": 121.03,
+            "departure_time": "2026-08-14 21:36:22",
+            "estimated_arrival": "2026-08-14 22:36:22",
+            "actual_arrival": null,
+            "total_distance": 18.5,
+            "total_duration": 60,
+            "fuel_consumption": 5.2,
+            "status": "Active"
+        },
+        {
+            "id": 102,
+            "vehicle_id": 2,
+            "driver_id": 2,
+            "origin": "Makati Central Terminal",
+            "destination": "Pasig Industrial Estate",
+            "origin_lat": 14.5547,
+            "origin_lng": 121.0244,
+            "dest_lat": 14.5764,
+            "dest_lng": 121.0851,
+            "departure_time": "2026-08-14 21:51:22",
+            "estimated_arrival": "2026-08-14 22:51:22",
+            "actual_arrival": null,
+            "total_distance": 14.2,
+            "total_duration": 60,
+            "fuel_consumption": 4.1,
+            "status": "Delayed"
+        },
+        {
+            "id": 103,
+            "vehicle_id": 3,
+            "driver_id": 3,
+            "origin": "North Port Terminal",
+            "destination": "Bulacan Freight Center",
+            "origin_lat": 14.62,
+            "origin_lng": 120.96,
+            "dest_lat": 14.8,
+            "dest_lng": 120.9,
+            "departure_time": "2026-08-14 22:01:22",
+            "estimated_arrival": "2026-08-14 23:01:22",
+            "actual_arrival": null,
+            "total_distance": 32,
+            "total_duration": 60,
+            "fuel_consumption": 8.9,
+            "status": "Active"
+        }
+    ],
+    "notifications": [
+        {
+            "id": 1,
+            "trip_id": 102,
+            "vehicle_id": 2,
+            "type": "Traffic delay",
+            "message": "Traffic delay detected on C-5 Pasig segment (+14 mins).",
+            "severity": "warning",
+            "created_at": "2026-08-14 22:06:22"
+        },
+        {
+            "id": 2,
+            "trip_id": 101,
+            "vehicle_id": 1,
+            "type": "Vehicle arrived",
+            "message": "Vehicle TRK-100 arrived at Manila Bay Depot.",
+            "severity": "info",
+            "created_at": "2026-08-14 23:16:22"
+        }
+    ]
+}
