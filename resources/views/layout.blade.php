@@ -61,6 +61,15 @@
       [data-theme="dark"] .profile-pill .pp-avatar {
         background: linear-gradient(135deg,#4361ee,#7b2ff7) !important;
       }
+      [data-theme="dark"] .pp-menu,
+      [data-theme="dark"] .sb-menu {
+        background: #162032 !important;
+        box-shadow: 0 12px 32px rgba(0,0,0,0.45) !important;
+      }
+      [data-theme="dark"] .pp-menu-item,
+      [data-theme="dark"] .sb-menu-item { color: #e4eaf5 !important; }
+      [data-theme="dark"] .pp-menu-item:hover,
+      [data-theme="dark"] .sb-menu-item:hover { background: rgba(67,97,238,0.15) !important; }
       [data-theme="dark"] .search-bar input { color: #e4eaf5 !important; background: transparent !important; }
       [data-theme="dark"] .search-bar svg { color: #7a8faa !important; }
       [data-theme="dark"] .hero-card { background: linear-gradient(90deg, #162032 0%, #1a2840 100%) !important; }
@@ -196,6 +205,7 @@
         display: flex;
         align-items: center;
         gap: 10px;
+        position: relative;
         padding: 14px 16px;
         border-top: 1px solid rgba(255,255,255,0.07);
         cursor: pointer;
@@ -299,8 +309,42 @@
         border: none !important;
         cursor: pointer !important;
         transition: box-shadow 0.18s ease, transform 0.18s ease !important;
+        position: relative !important;
       }
       .profile-pill:hover { box-shadow: 0 8px 24px rgba(67,97,238,0.15) !important; transform: translateY(-1px) !important; }
+
+      /* Profile / sidebar user dropdown menus */
+      .pp-menu, .sb-menu {
+        display: none;
+        position: absolute;
+        min-width: 170px;
+        background: var(--surface);
+        border-radius: 12px;
+        box-shadow: 0 12px 32px rgba(0,0,0,0.15);
+        padding: 6px;
+        z-index: 200;
+      }
+      .pp-menu { top: calc(100% + 8px); right: 0; }
+      .sb-menu { left: 0; bottom: calc(100% + 8px); }
+      .profile-pill.open .pp-menu,
+      .sb-user.open .sb-menu { display: block; }
+      .pp-menu-item, .sb-menu-item {
+        display: block;
+        width: 100%;
+        text-align: left;
+        padding: 9px 10px;
+        border-radius: 8px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--text);
+        background: none;
+        border: none;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .pp-menu-item:hover, .sb-menu-item:hover { background: rgba(67,97,238,0.08); }
+      .pp-menu-item.danger, .sb-menu-item.danger { color: #e5484d; }
+      .pp-menu-item.danger:hover, .sb-menu-item.danger:hover { background: rgba(229,72,77,0.08); }
       .profile-pill .pp-avatar {
         width: 34px;
         height: 34px;
@@ -489,7 +533,7 @@
         </button>
 
         <!-- Bottom User Profile -->
-        <div class="sb-user">
+        <div class="sb-user" id="sbUser">
             <div class="sb-user-avatar"><?= htmlspecialchars($dashboard['user']['initials']) ?></div>
             <div class="sb-user-info">
                 <strong><?= htmlspecialchars($dashboard['user']['name']) ?></strong>
@@ -498,6 +542,10 @@
             <span class="sb-user-chevron">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </span>
+            <div class="sb-menu">
+                <a href="{{ route('settings') }}" class="sb-menu-item">Settings</a>
+                <button type="button" class="sb-menu-item danger sb-menu-logout">Log out</button>
+            </div>
         </div>
 
     </aside>
@@ -532,7 +580,7 @@
                     <span class="tb-badge blue">2</span>
                 </button>
                 <!-- Profile pill -->
-                <div class="profile-pill">
+                <div class="profile-pill" id="profilePill">
                     <div class="pp-avatar"><?= htmlspecialchars($dashboard['user']['initials']) ?></div>
                     <div class="pp-info">
                         <strong><?= htmlspecialchars($dashboard['user']['name']) ?></strong>
@@ -541,6 +589,10 @@
                     <span class="pp-chevron">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                     </span>
+                    <div class="pp-menu">
+                        <a href="{{ route('settings') }}" class="pp-menu-item">Settings</a>
+                        <button type="button" class="pp-menu-item danger pp-menu-logout">Log out</button>
+                    </div>
                 </div>
             </div>
         </header>
@@ -593,18 +645,35 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Logout handlers
+    // Profile dropdown handlers
     var logoutForm = document.getElementById('logoutForm');
-    var sbUser     = document.querySelector('.sb-user');
-    var profPill   = document.querySelector('.profile-pill');
+    var sbUser     = document.getElementById('sbUser');
+    var profPill   = document.getElementById('profilePill');
+
+    function closeProfileMenus() {
+        if (sbUser) sbUser.classList.remove('open');
+        if (profPill) profPill.classList.remove('open');
+    }
+
+    [sbUser, profPill].forEach(function (el) {
+        if (!el) return;
+        el.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var wasOpen = el.classList.contains('open');
+            closeProfileMenus();
+            if (!wasOpen) el.classList.add('open');
+        });
+    });
+
+    document.addEventListener('click', closeProfileMenus);
 
     if (logoutForm) {
-        if (sbUser) {
-            sbUser.addEventListener('click', function () { logoutForm.submit(); });
-        }
-        if (profPill) {
-            profPill.addEventListener('click', function () { logoutForm.submit(); });
-        }
+        document.querySelectorAll('.pp-menu-logout, .sb-menu-logout').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                logoutForm.submit();
+            });
+        });
     }
 
     // Dark mode toggle

@@ -31,6 +31,7 @@
         .login-card h2 { margin: 0; font-size: 1.8rem; letter-spacing: -.04em; }
         .login-card > p { margin: .55rem 0 2rem; color: var(--muted); font-size: .92rem; }
         .alert { display: flex; gap: .6rem; align-items: flex-start; margin-bottom: 1.25rem; padding: .8rem .9rem; border: 1px solid #f3c8cc; border-radius: .65rem; color: #9f2732; background: #fff4f5; font-size: .84rem; line-height: 1.45; }
+        .status { margin-bottom: 1.25rem; padding: .8rem .9rem; border: 1px solid #bfe3cc; border-radius: .65rem; color: #1f7a45; background: #f2fbf5; font-size: .84rem; line-height: 1.45; }
         .alert svg { flex: 0 0 auto; width: 18px; height: 18px; }
         .login-form { display: grid; gap: 1.2rem; }
         .field { display: grid; gap: .5rem; }
@@ -83,6 +84,9 @@
         <section class="login-card" aria-labelledby="login-heading">
             <h2 id="login-heading">Welcome back</h2>
             <p>Enter your credentials to access your workspace.</p>
+            @if (session('status'))
+                <div class="status" role="status">{{ session('status') }}</div>
+            @endif
             @if ($errors->any())
                 <div class="alert" role="alert">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4m0 4h.01"></path></svg>
@@ -99,7 +103,10 @@
                     </div>
                 </div>
                 <div class="field">
-                    <label for="password">Password</label>
+                    <div style="display:flex; align-items:center; justify-content:space-between;">
+                        <label for="password">Password</label>
+                        <a href="{{ route('password.request') }}" style="color:var(--accent); font-size:.8rem; font-weight:600; text-decoration:none;">Forgot password?</a>
+                    </div>
                     <div class="input-wrap">
                         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
                         <input type="password" id="password" name="password" autocomplete="current-password" placeholder="Enter your password" required>
