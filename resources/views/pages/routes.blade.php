@@ -236,7 +236,7 @@
                 <label>Select Driver Vehicle:</label>
                 <select id="mobile-vehicle-select" class="form-control">
                     <option value="1">TRK-101 (Harvey Villarin - Cargo Truck)</option>
-                    <option value="2">TRK-102 (Reybie Reforsado - Refrigerated)</option>
+                    <option value="2">TRK-102 (Joanna Reforsado - Refrigerated)</option>
                     <option value="3">TRK-103 (Erwin Cober - Container Hauler)</option>
                 </select>
             </div>
@@ -320,14 +320,43 @@
     let refreshInterval = null;
     let gpsWatchId = null;
     let simulatedGpsInterval = null;
+    let currentStatusFilter = 'all';
+    let currentSearchQuery = '';
 
     document.addEventListener('DOMContentLoaded', function () {
         initLeafletMap();
         loadFleetData();
-        
+
         // Auto-refresh vehicle locations every 5 seconds without page reload
         refreshInterval = setInterval(loadFleetData, 5000);
+
+        const globalSearchInput = document.getElementById('globalSearchInput');
+        if (globalSearchInput) {
+            globalSearchInput.addEventListener('input', function () {
+                currentSearchQuery = this.value.trim().toLowerCase();
+                applyFleetFilters();
+            });
+        }
     });
+
+    function vehicleMatchesSearch(v, query) {
+        if (!query) return true;
+        return [v.vehicle_code, v.plate_number, v.driver_name, v.employee_id, v.destination, v.origin, v.type]
+            .filter(Boolean)
+            .some(field => String(field).toLowerCase().includes(query));
+    }
+
+    function getFilteredFleet() {
+        return fleetData
+            .filter(v => currentStatusFilter === 'all' || v.status === currentStatusFilter)
+            .filter(v => vehicleMatchesSearch(v, currentSearchQuery));
+    }
+
+    function applyFleetFilters() {
+        const filtered = getFilteredFleet();
+        renderFleetMarkers(filtered);
+        renderDispatchList(filtered);
+    }
 
     function initLeafletMap() {
         // Center on Metro Manila / Philippines Fleet Area
@@ -370,8 +399,7 @@
             .then(data => {
                 if (data.success && data.vehicles) {
                     fleetData = data.vehicles;
-                    renderFleetMarkers(data.vehicles);
-                    renderDispatchList(data.vehicles);
+                    applyFleetFilters();
                     updateDashboardAnalytics();
                     loadNotifications();
 
@@ -387,6 +415,14 @@
     }
 
     function renderFleetMarkers(vehicles) {
+        const visibleIds = new Set(vehicles.map(v => v.id));
+
+        Object.keys(vehicleMarkers).forEach(id => {
+            if (!visibleIds.has(Number(id)) && map.hasLayer(vehicleMarkers[id])) {
+                map.removeLayer(vehicleMarkers[id]);
+            }
+        });
+
         vehicles.forEach(v => {
             const latLng = [v.latitude, v.longitude];
             const icon = createTruckIcon(v.vehicle_code, v.status, v.speed, v.route_color);
@@ -394,6 +430,9 @@
             if (vehicleMarkers[v.id]) {
                 vehicleMarkers[v.id].setLatLng(latLng);
                 vehicleMarkers[v.id].setIcon(icon);
+                if (!map.hasLayer(vehicleMarkers[v.id])) {
+                    vehicleMarkers[v.id].addTo(map);
+                }
             } else {
                 const marker = L.marker(latLng, { icon: icon }).addTo(map);
                 marker.on('click', () => selectVehicle(v.id));
@@ -495,6 +534,12 @@
     function renderDispatchList(vehicles) {
         const container = document.getElementById('dispatch-list-container');
         container.innerHTML = '';
+
+        if (vehicles.length === 0) {
+            container.innerHTML = '<div class="dispatch-empty" style="padding:1.5rem 0.5rem;text-align:center;color:var(--muted,#6c7a93);font-size:0.85rem;">No vehicles match your search.</div>';
+            document.getElementById('active-dispatch-count').innerText = 0;
+            return;
+        }
 
         let activeCount = 0;
         vehicles.forEach(v => {
@@ -703,12 +748,8 @@
         document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
         event.target.classList.add('active');
 
-        if (status === 'all') {
-            renderFleetMarkers(fleetData);
-        } else {
-            const filtered = fleetData.filter(v => v.status === status);
-            renderFleetMarkers(filtered);
-        }
+        currentStatusFilter = status;
+        applyFleetFilters();
     }
 
     function recenterMap() {

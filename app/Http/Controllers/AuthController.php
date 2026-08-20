@@ -2,19 +2,24 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\TrustedDevice;
 use App\Models\User;
 use App\Notifications\TwoFactorCodeNotification;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class AuthController extends Controller
 {
     private const TWO_FACTOR_VALID_MINUTES = 10;
+    private const TRUSTED_DEVICE_DAYS = 7;
+    private const TRUSTED_DEVICE_COOKIE = 'trusted_device';
 
     public function create(): View { return view('login'); }
 
@@ -29,6 +34,14 @@ class AuthController extends Controller
         }
 
         $user = Auth::getLastAttempted();
+
+        if ($this->hasTrustedDevice($user, $request)) {
+            Auth::login($user, $request->boolean('remember'));
+            $request->session()->regenerate();
+
+            return redirect()->intended('/dashboard');
+        }
+
         $this->issueTwoFactorCode($user);
 
         $request->session()->put('two_factor.user_id', $user->id);
@@ -72,6 +85,10 @@ class AuthController extends Controller
         $remember = $request->session()->pull('two_factor.remember', false);
         $request->session()->forget('two_factor.user_id');
 
+        if ($request->boolean('remember_device')) {
+            $this->rememberDevice($user, $request);
+        }
+
         Auth::login($user, $remember);
         $request->session()->regenerate();
 
@@ -105,6 +122,47 @@ class AuthController extends Controller
         $user->save();
 
         $user->notify(new TwoFactorCodeNotification($code, self::TWO_FACTOR_VALID_MINUTES));
+    }
+
+    private function hasTrustedDevice(User $user, Request $request): bool
+    {
+        $cookie = $request->cookie(self::TRUSTED_DEVICE_COOKIE);
+
+        if (! $cookie || ! str_contains($cookie, '|')) {
+            return false;
+        }
+
+        [$selector, $validator] = explode('|', $cookie, 2);
+
+        $device = TrustedDevice::query()
+            ->where('user_id', $user->id)
+            ->where('selector', $selector)
+            ->where('expires_at', '>', now())
+            ->first();
+
+        return $device && hash_equals($device->token_hash, hash('sha256', $validator));
+    }
+
+    private function rememberDevice(User $user, Request $request): void
+    {
+        $selector = Str::random(24);
+        $validator = Str::random(48);
+
+        TrustedDevice::query()->where('user_id', $user->id)->where('expires_at', '<=', now())->delete();
+
+        TrustedDevice::create([
+            'user_id' => $user->id,
+            'selector' => $selector,
+            'token_hash' => hash('sha256', $validator),
+            'user_agent' => substr((string) $request->userAgent(), 0, 255),
+            'expires_at' => now()->addDays(self::TRUSTED_DEVICE_DAYS),
+        ]);
+
+        Cookie::queue(
+            self::TRUSTED_DEVICE_COOKIE,
+            $selector.'|'.$validator,
+            self::TRUSTED_DEVICE_DAYS * 24 * 60
+        );
     }
 
     public function showForgotPassword(): View

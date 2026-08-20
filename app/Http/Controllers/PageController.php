@@ -30,8 +30,10 @@ class PageController extends Controller
             'title' => $titles[$page],
             'basePath' => '',
             'user' => [
+                'id' => $user->id,
                 'name' => $user->name,
                 'title' => $user->role ?? 'Staff',
+                'role' => $user->role ?? 'Staff',
                 'initials' => strtoupper(substr($user->name, 0, 2)),
             ],
             'stats' => [
@@ -73,6 +75,7 @@ class PageController extends Controller
             'users' => $page === 'usermanagement'
                 ? User::orderBy('name')->get(['id', 'name', 'email', 'role', 'status'])->all()
                 : [],
+            'userRoles' => ['Admin', 'Manager', 'Dispatcher', 'Accountant', 'Staff'],
             'quickActions' => ['Add Vehicle', 'Log Fuel', 'Create Reservation', 'Report Incident', 'Dispatch Log', 'View Routes', 'Check Drivers', 'Settings'],
         ];
 

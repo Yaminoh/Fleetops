@@ -30,6 +30,8 @@
         .resend-btn:hover { text-decoration: underline; }
         .back { display: block; margin-top: .85rem; color: var(--muted); font-size: .82rem; text-decoration: none; text-align: center; }
         .back:hover { color: var(--accent); }
+        .remember { display: flex; align-items: center; gap: .5rem; margin-bottom: 1.2rem; font-size: .84rem; color: var(--text); }
+        .remember input { width: auto; min-height: auto; }
     </style>
 </head>
 <body>
@@ -54,6 +56,10 @@
                 <label for="code">Verification code</label>
                 <input type="text" id="code" name="code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="------" autocomplete="one-time-code" required autofocus>
             </div>
+            <label class="remember" for="remember_device">
+                <input type="checkbox" id="remember_device" name="remember_device" value="1">
+                Remember this device for 7 days
+            </label>
             <button type="submit" class="btn">Verify &amp; sign in</button>
         </form>
 

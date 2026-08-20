@@ -3,6 +3,7 @@
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\PageController;
+use App\Http\Controllers\UserManagementController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/dashboard');
@@ -27,6 +28,10 @@ Route::middleware('auth')->group(function (): void {
     foreach (['vehicles', 'reservations', 'drivers', 'fuel-logs', 'cost-analytics', 'driver-analytics', 'routes', 'reports', 'settings', 'usermanagement', 'notifications'] as $page) {
         Route::get('/'.$page, [PageController::class, 'show'])->defaults('page', $page)->name($page);
     }
+
+    Route::post('/usermanagement', [UserManagementController::class, 'store'])->name('usermanagement.store');
+    Route::put('/usermanagement/{user}', [UserManagementController::class, 'update'])->name('usermanagement.update');
+    Route::delete('/usermanagement/{user}', [UserManagementController::class, 'destroy'])->name('usermanagement.destroy');
 });
 Route::prefix('api')->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])->group(function (): void {
     Route::get('/vehicles/live', [ApiController::class, 'getLiveVehicles']);
