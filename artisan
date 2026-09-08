@@ -1,0 +1,23 @@
+#!/usr/bin/env php
+<?php
+
+use Illuminate\Foundation\Application;
+use Symfony\Component\Console\Input\ArgvInput;
+
+define('LARAVEL_START', microtime(true));
+
+// Register the Composer autoloader...
+$autoload = __DIR__ . '/vendor/autoload.php';
+if (!file_exists($autoload)) {
+	fwrite(STDERR, "Composer autoload not found. Run `composer install` in the project root to install dependencies.\n");
+	exit(1);
+}
+require $autoload;
+
+// Bootstrap Laravel and handle the command...
+/** @var Application $app */
+$app = require_once __DIR__.'/bootstrap/app.php';
+
+$status = $app->handleCommand(new ArgvInput);
+
+exit($status);
