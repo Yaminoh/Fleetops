@@ -2,13 +2,16 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Alert extends Model
 {
+    use HasFactory;
+
     public $timestamps = false;
 
-    protected $fillable = ['icon', 'title', 'detail', 'severity', 'created_at'];
+    protected $fillable = ['vehicle_id', 'trip_record_id', 'icon', 'title', 'detail', 'type', 'message', 'severity', 'created_at'];
 
     protected function casts(): array
     {

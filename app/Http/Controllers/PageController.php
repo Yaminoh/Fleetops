@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Vehicle;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class PageController extends Controller
@@ -32,6 +33,12 @@ class PageController extends Controller
 
         $finance = $this->buildFinanceData();
 
+        // The original database used reservation_date; the workflow module uses
+        // requested_date. Support both while the compatibility migration runs.
+        $reservationDateColumn = Schema::hasColumn('reservations', 'requested_date')
+            ? 'requested_date'
+            : 'reservation_date';
+
         $dashboard = [
             'page' => $page,
             'title' => $titles[$page],
@@ -53,14 +60,14 @@ class PageController extends Controller
                 ['title' => 'Transport Costs This Month', 'value' => $finance['totals']['total_this_month'], 'meta' => 'Fuel + maintenance, live', 'positive' => true, 'currency' => true, 'currency_symbol' => 'PHP '],
             ],
             'reservations' => DB::table('reservations')
-                ->orderByDesc('reservation_date')
+                ->orderByDesc($reservationDateColumn)
                 ->limit(5)
                 ->get()
                 ->map(fn (object $reservation): array => [
-                    'name' => $reservation->driver_name,
+                    'name' => $reservation->driver_name ?? $reservation->employee_id ?? 'Unassigned',
                     'vehicle' => $reservation->vehicle_type,
-                    'date' => $reservation->reservation_date,
-                    'duration' => $reservation->duration_days.' day'.($reservation->duration_days === 1 ? '' : 's'),
+                    'date' => $reservation->{$reservationDateColumn},
+                    'duration' => ($reservation->duration_days ?? 1).' day'.(($reservation->duration_days ?? 1) === 1 ? '' : 's'),
                     'status' => ucfirst($reservation->status),
                 ])
                 ->all(),

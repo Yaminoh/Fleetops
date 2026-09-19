@@ -2,11 +2,14 @@
 
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\DispatchController;
 use App\Http\Controllers\FleetCostController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PageController;
+use App\Http\Controllers\ReservationController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UserManagementController;
+use App\Http\Controllers\VehicleController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/dashboard');
@@ -45,6 +48,16 @@ Route::middleware('auth')->group(function (): void {
 
     Route::post('/fuel-logs', [FleetCostController::class, 'storeFuelLog'])->name('fuel-logs.store');
     Route::post('/cost-analytics/maintenance', [FleetCostController::class, 'storeMaintenance'])->name('maintenance.store');
+
+    // Operations workflow: reserve a vehicle, create a dispatch, then track its progress.
+    Route::post('/reservations', [ReservationController::class, 'store'])->name('reservations.store');
+    Route::post('/reservations/{reservation}/approve', [ReservationController::class, 'approve'])->name('reservations.approve');
+    Route::post('/reservations/{reservation}/reject', [ReservationController::class, 'reject'])->name('reservations.reject');
+    Route::post('/dispatches', [DispatchController::class, 'store'])->name('dispatches.store');
+    Route::post('/dispatches/convert/{reservation}', [DispatchController::class, 'convert'])->name('dispatches.convert');
+    Route::post('/dispatches/{dispatch}/status', [DispatchController::class, 'updateStatus'])->name('dispatches.update-status');
+    Route::post('/vehicles', [VehicleController::class, 'store'])->name('vehicles.store');
+    Route::post('/vehicles/{vehicle}', [VehicleController::class, 'update'])->name('vehicles.update');
 });
 Route::prefix('api')->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])->group(function (): void {
     Route::get('/vehicles/live', [ApiController::class, 'getLiveVehicles']);
