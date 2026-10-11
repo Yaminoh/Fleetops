@@ -4,7 +4,7 @@
 CREATE TABLE IF NOT EXISTS users (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, name VARCHAR(100) NOT NULL,
     email VARCHAR(100) NOT NULL UNIQUE, password VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL DEFAULT 'Staff', status VARCHAR(20) NOT NULL DEFAULT 'active',
+    role VARCHAR(50) NOT NULL DEFAULT 'User', status VARCHAR(20) NOT NULL DEFAULT 'active',
     two_factor_code VARCHAR(255), two_factor_expires_at TIMESTAMP, preferences JSONB,
     remember_token VARCHAR(100), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -98,7 +98,10 @@ CREATE TABLE IF NOT EXISTS location_logs (
 
 CREATE TABLE IF NOT EXISTS fuel_logs (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, vehicle_id BIGINT NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+    driver_id BIGINT REFERENCES drivers(id) ON DELETE SET NULL,
     dispatch_id BIGINT REFERENCES dispatches(id) ON DELETE SET NULL, liters NUMERIC(8,2) NOT NULL CHECK (liters > 0),
+    fuel_level_before NUMERIC(5,2) CHECK (fuel_level_before BETWEEN 0 AND 100),
+    fuel_level_after NUMERIC(5,2) CHECK (fuel_level_after BETWEEN 0 AND 100),
     cost NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (cost >= 0), logged_at DATE NOT NULL, receipt_image VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

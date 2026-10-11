@@ -8,10 +8,11 @@ use App\Notifications\TwoFactorCodeNotification;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\View\View;
+use App\Notifications\Channels\BrevoApiException;
 
 class AuthController extends Controller
 {
@@ -25,15 +26,23 @@ class AuthController extends Controller
     {
         $credentials = $request->validate(['email' => ['required', 'email'], 'password' => ['required', 'string']]);
 
-        if (! Auth::validate($credentials) || Auth::getLastAttempted()?->status !== 'active') {
+        if (! Auth::validate($credentials)) {
             return back()->withErrors(['email' => 'Invalid email or password.'])->onlyInput('email');
         }
 
         $user = Auth::getLastAttempted();
-        $this->issueTwoFactorCode($user);
+
+        if (! $user instanceof User || $user->status !== 'active') {
+            return back()->withErrors(['email' => 'Invalid email or password.'])->onlyInput('email');
+        }
+
+        if (! $this->issueTwoFactorCode($user)) {
+            return back()
+                ->withErrors(['email' => 'We could not send a verification code. Please try again.'])
+                ->onlyInput('email');
+        }
 
         $request->session()->put('two_factor.user_id', $user->id);
-        $request->session()->put('two_factor.remember', $request->boolean('remember'));
 
         return redirect()->route('two-factor.challenge');
     }
@@ -49,12 +58,13 @@ class AuthController extends Controller
 
     public function verifyTwoFactor(Request $request): RedirectResponse
     {
-        $request->validate(['code' => ['required', 'string']]);
+        $request->validate(['code' => ['required', 'string', 'regex:/^[0-9]{6}$/']]);
 
         $userId = $request->session()->get('two_factor.user_id');
         $user = $userId ? User::find($userId) : null;
 
-        if (! $user) {
+        if (! $user || $user->status !== 'active') {
+            $request->session()->forget('two_factor');
             return redirect()->route('login');
         }
 
@@ -70,13 +80,11 @@ class AuthController extends Controller
         $user->two_factor_expires_at = null;
         $user->save();
 
-        $remember = $request->session()->pull('two_factor.remember', false);
-        $request->session()->forget('two_factor.user_id');
-
-        Auth::login($user, $remember);
+        $request->session()->forget('two_factor');
+        Auth::login($user);
         $request->session()->regenerate();
 
-        return redirect()->intended('/dashboard');
+        return redirect()->to($this->dashboardPath($user));
     }
 
     public function resendTwoFactor(Request $request): RedirectResponse
@@ -84,28 +92,43 @@ class AuthController extends Controller
         $userId = $request->session()->get('two_factor.user_id');
         $user = $userId ? User::find($userId) : null;
 
-        if (! $user) {
+        if (! $user || $user->status !== 'active') {
+            $request->session()->forget('two_factor');
             return redirect()->route('login');
         }
 
-        if ($user->two_factor_expires_at?->subMinutes(self::TWO_FACTOR_VALID_MINUTES - 1)->isFuture()) {
+        if ($user->two_factor_expires_at?->copy()->subMinutes(self::TWO_FACTOR_VALID_MINUTES - 1)->isFuture()) {
             return back()->withErrors(['code' => 'Please wait a moment before requesting a new code.']);
         }
 
-        $this->issueTwoFactorCode($user);
+        if (! $this->issueTwoFactorCode($user)) {
+            return back()->withErrors(['code' => 'We could not send a verification code. Please try again.']);
+        }
 
         return back()->with('status', 'A new verification code has been sent to your email.');
     }
 
-    private function issueTwoFactorCode(User $user): void
+    private function issueTwoFactorCode(User $user): bool
     {
         $code = (string) random_int(100000, 999999);
 
         $user->two_factor_code = $code;
-        $user->two_factor_expires_at = now()->addMinutes(self::TWO_FACTOR_VALID_MINUTES);
+        $user->two_factor_expires_at = Carbon::now()->addMinutes(self::TWO_FACTOR_VALID_MINUTES);
         $user->save();
 
-        $user->notify(new TwoFactorCodeNotification($code, self::TWO_FACTOR_VALID_MINUTES));
+        try {
+            $user->notify(new TwoFactorCodeNotification($code, self::TWO_FACTOR_VALID_MINUTES));
+        } catch (BrevoApiException $exception) {
+            $user->two_factor_code = null;
+            $user->two_factor_expires_at = null;
+            $user->save();
+
+            report($exception);
+
+            return false;
+        }
+
+        return true;
     }
 
     public function showForgotPassword(): View
@@ -141,7 +164,7 @@ class AuthController extends Controller
         $status = Password::reset(
             $request->only('email', 'password', 'password_confirmation', 'token'),
             function (User $user, string $password): void {
-                $user->password = Hash::make($password);
+                $user->setPassword($password);
                 $user->save();
 
                 event(new PasswordReset($user));
@@ -161,20 +184,26 @@ class AuthController extends Controller
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
-        $user = User::create([
+        $user = new User([
             'name' => $data['name'],
             'email' => strtolower($data['email']),
-            'password' => Hash::make($data['password']),
-            'role' => 'Staff',
+            'role' => 'User',
             'status' => 'active',
         ]);
+        $user->setPassword($data['password']);
+        $user->save();
 
         Alert::log('🆕', 'New User Registered', "{$user->name} ({$user->email}) just signed up.");
 
         Auth::login($user);
         $request->session()->regenerate();
 
-        return redirect()->route('dashboard');
+        return redirect('/users/dashboard');
+    }
+
+    private function dashboardPath(User $user): string
+    {
+        return $user->role === 'Admin' ? '/dashboard' : '/users/dashboard';
     }
 
     public function destroy(Request $request): RedirectResponse

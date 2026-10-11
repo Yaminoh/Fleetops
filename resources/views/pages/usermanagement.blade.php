@@ -49,10 +49,13 @@
                                     <button class="icon-button" title="Edit" type="button"
                                         onclick="openEditUserModal(<?= (int) $user['id'] ?>, <?= htmlspecialchars(json_encode($user['name']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($user['email']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($user['role']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($user['status']), ENT_QUOTES) ?>)">✏️</button>
                                     <?php if ($user['id'] !== $dashboard['user']['id']): ?>
-                                        <form method="POST" action="<?= route('usermanagement.destroy', $user['id']) ?>" style="display:inline;" onsubmit="return confirm('Delete <?= htmlspecialchars(addslashes($user['name'])) ?>? This cannot be undone.');">
+                                        <?php $nextStatus = $user['status'] === 'active' ? 'inactive' : 'active'; ?>
+                                        <form method="POST" action="<?= route('usermanagement.update', $user['id']) ?>" style="display:inline;" onsubmit="return confirm('Mark <?= htmlspecialchars(addslashes($user['name'])) ?> as <?= $nextStatus ?>?');">
                                             <?= csrf_field() ?>
-                                            <?= method_field('DELETE') ?>
-                                            <button class="icon-button" title="Delete" type="submit">🗑️</button>
+                                            <?= method_field('PUT') ?>
+                                            <input type="hidden" name="status_toggle" value="1">
+                                            <input type="hidden" name="status" value="<?= $nextStatus ?>">
+                                            <button class="icon-button" title="Set account <?= $nextStatus ?>" type="submit"><?= ucfirst($nextStatus) ?></button>
                                         </form>
                                     <?php endif; ?>
                                 </td>

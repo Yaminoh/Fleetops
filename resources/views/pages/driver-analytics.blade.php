@@ -4,47 +4,110 @@
    Logistics 2 Fleet Management System
    ────────────────────────────────────────────────────────────── */
 
-// ── Seed / mock data (replaced by real DB queries below) ──────
-$driverData = [
-    ['id' => 1, 'name' => 'Harvey Villarin',   'employee_id' => 'DRV-1001', 'role' => 'Senior Lead Driver',       'score' => 94, 'on_time' => 97, 'fuel_eff' => 89, 'safety' => 96, 'attendance' => 98, 'total_trips' => 124, 'completed' => 122, 'delayed' => 2,  'km_per_liter' => 10.4, 'risk' => 'Low',    'rank' => 1],
-    ['id' => 2, 'name' => 'Jhoanna Reforsado',  'employee_id' => 'DRV-1002', 'role' => 'Regional Logistics Driver', 'score' => 91, 'on_time' => 94, 'fuel_eff' => 87, 'safety' => 93, 'attendance' => 96, 'total_trips' => 111, 'completed' => 108, 'delayed' => 3,  'km_per_liter' => 9.9,  'risk' => 'Low',    'rank' => 2],
-    ['id' => 3, 'name' => 'Erwin Cover Jr.',   'employee_id' => 'DRV-1003', 'role' => 'Heavy Fleet Operator',     'score' => 88, 'on_time' => 90, 'fuel_eff' => 85, 'safety' => 90, 'attendance' => 94, 'total_trips' => 98,  'completed' => 94,  'delayed' => 4,  'km_per_liter' => 9.5,  'risk' => 'Low',    'rank' => 3],
-    ['id' => 4, 'name' => 'Daniella Agus',     'employee_id' => 'DRV-1004', 'role' => 'Express Dispatcher',       'score' => 85, 'on_time' => 88, 'fuel_eff' => 83, 'safety' => 87, 'attendance' => 92, 'total_trips' => 87,  'completed' => 82,  'delayed' => 5,  'km_per_liter' => 9.1,  'risk' => 'Medium', 'rank' => 4],
-    ['id' => 5, 'name' => 'Joanna Reforsado',  'employee_id' => 'DRV-1005', 'role' => 'Senior Driver',             'score' => 82, 'on_time' => 85, 'fuel_eff' => 80, 'safety' => 84, 'attendance' => 90, 'total_trips' => 76,  'completed' => 70,  'delayed' => 6,  'km_per_liter' => 8.8,  'risk' => 'Medium', 'rank' => 5],
-    ['id' => 6, 'name' => 'Marco Santos',      'employee_id' => 'DRV-1006', 'role' => 'Route Specialist',          'score' => 79, 'on_time' => 81, 'fuel_eff' => 78, 'safety' => 80, 'attendance' => 88, 'total_trips' => 65,  'completed' => 59,  'delayed' => 6,  'km_per_liter' => 8.5,  'risk' => 'Medium', 'rank' => 6],
-    ['id' => 7, 'name' => 'Liza Mercado',      'employee_id' => 'DRV-1007', 'role' => 'City Courier',              'score' => 75, 'on_time' => 77, 'fuel_eff' => 74, 'safety' => 76, 'attendance' => 86, 'total_trips' => 54,  'completed' => 47,  'delayed' => 7,  'km_per_liter' => 8.1,  'risk' => 'Medium', 'rank' => 7],
-    ['id' => 8, 'name' => 'Bong Dela Cruz',    'employee_id' => 'DRV-1008', 'role' => 'Night Shift Driver',        'score' => 68, 'on_time' => 70, 'fuel_eff' => 67, 'safety' => 70, 'attendance' => 78, 'total_trips' => 43,  'completed' => 36,  'delayed' => 7,  'km_per_liter' => 7.6,  'risk' => 'High',   'rank' => 8],
-    ['id' => 9, 'name' => 'Tess Gonzales',     'employee_id' => 'DRV-1009', 'role' => 'Utility Driver',            'score' => 62, 'on_time' => 64, 'fuel_eff' => 61, 'safety' => 63, 'attendance' => 74, 'total_trips' => 38,  'completed' => 30,  'delayed' => 8,  'km_per_liter' => 7.2,  'risk' => 'High',   'rank' => 9],
-    ['id' => 10,'name' => 'Raul Dizon',         'employee_id' => 'DRV-1010', 'role' => 'Trainee Driver',             'score' => 55, 'on_time' => 57, 'fuel_eff' => 54, 'safety' => 56, 'attendance' => 70, 'total_trips' => 28,  'completed' => 20,  'delayed' => 8,  'km_per_liter' => 6.8,  'risk' => 'High',   'rank' => 10],
-];
+// ── Driver Analytics built from the real database ─────────────
+$driverRows = \Illuminate\Support\Facades\DB::table('drivers')
+    ->leftJoin('users', 'drivers.user_id', '=', 'users.id')
+    ->leftJoin('trip_records', 'trip_records.driver_id', '=', 'drivers.id')
+    ->select(
+        'drivers.id',
+        'users.name as user_name',
+        'drivers.name as driver_name',
+        'drivers.employee_id',
+        'drivers.role',
+        'drivers.status',
+        'drivers.score',
+        \Illuminate\Support\Facades\DB::raw('COUNT(trip_records.id) as total_trips'),
+        \Illuminate\Support\Facades\DB::raw("SUM(CASE WHEN trip_records.status = 'Completed' THEN 1 ELSE 0 END) as completed"),
+        \Illuminate\Support\Facades\DB::raw("SUM(CASE WHEN trip_records.status IS NOT NULL AND LOWER(trip_records.status) LIKE '%delay%' THEN 1 ELSE 0 END) as delayed"),
+        \Illuminate\Support\Facades\DB::raw('COALESCE(SUM(trip_records.total_distance), 0) as distance'),
+        \Illuminate\Support\Facades\DB::raw('COALESCE(SUM(trip_records.fuel_consumption), 0) as fuel')
+    )
+    ->groupBy('drivers.id', 'users.name', 'drivers.name', 'drivers.employee_id', 'drivers.role', 'drivers.status', 'drivers.score')
+    ->orderByDesc('drivers.score')
+    ->get();
+
+$driverData = [];
+foreach ($driverRows as $i => $row) {
+    $name = $row->user_name ?: ($row->driver_name ?: 'Driver');
+    $score = (float)($row->score ?? 0);
+    $distance = (float)$row->distance;
+    $fuel = (float)$row->fuel;
+    $driverData[] = [
+        'id' => (int)$row->id,
+        'name' => $name,
+        'employee_id' => $row->employee_id,
+        'role' => $row->role,
+        'status' => $row->status,
+        'score' => round($score, 1),
+        'on_time' => 0,
+        'fuel_eff' => 0,
+        'safety' => 0,
+        'attendance' => 0,
+        'total_trips' => (int)$row->total_trips,
+        'completed' => (int)$row->completed,
+        'delayed' => (int)$row->delayed,
+        'km_per_liter' => $fuel > 0 ? round($distance / $fuel, 1) : 0,
+        'risk' => $score >= 90 ? 'Low' : ($score >= 70 ? 'Medium' : 'High'),
+        'rank' => $i + 1,
+    ];
+}
 
 $totalDrivers   = count($driverData);
-$activeDrivers  = 8;
-$avgScore       = round(array_sum(array_column($driverData, 'score')) / $totalDrivers);
-$topDriver      = $driverData[0];
-$lowestDriver   = $driverData[$totalDrivers - 1];
+$activeDrivers  = count(array_filter($driverData, fn($dr) => strtolower((string)($dr['status'] ?? '')) === 'active'));
+$avgScore       = $totalDrivers > 0 ? round(array_sum(array_column($driverData, 'score')) / $totalDrivers) : 0;
+$topDriver      = $driverData[0] ?? ['name' => 'N/A', 'score' => 0, 'employee_id' => ''];
+$lowestDriver   = $driverData[$totalDrivers - 1] ?? $topDriver;
 $totalTrips     = array_sum(array_column($driverData, 'total_trips'));
 
-$tripRecords = [
-    ['id' => 'TRP-2081', 'driver' => 'Harvey Villarin',  'vehicle' => 'TRK-101', 'origin' => 'Port Area Pier 15',    'dest' => 'QC Logistics Hub',       'depart' => '06:30', 'arrive' => '07:48', 'duration' => '1h 18m', 'distance' => '18.5 km', 'avg_speed' => '48 km/h', 'fuel' => '5.2 L', 'status' => 'Completed'],
-    ['id' => 'TRP-2082', 'driver' => 'Jhoanna Reforsado', 'vehicle' => 'TRK-102', 'origin' => 'Makati Central',       'dest' => 'Pasig Industrial Estate','depart' => '07:00', 'arrive' => '08:25', 'duration' => '1h 25m', 'distance' => '14.2 km', 'avg_speed' => '22 km/h', 'fuel' => '4.1 L', 'status' => 'Delayed'],
-    ['id' => 'TRP-2083', 'driver' => 'Erwin Cover Jr.',  'vehicle' => 'TRK-103', 'origin' => 'North Port Terminal',  'dest' => 'Bulacan Freight Center', 'depart' => '05:45', 'arrive' => '07:20', 'duration' => '1h 35m', 'distance' => '32.0 km', 'avg_speed' => '54 km/h', 'fuel' => '8.9 L', 'status' => 'Completed'],
-    ['id' => 'TRP-2084', 'driver' => 'Daniella Agus',    'vehicle' => 'TRK-105', 'origin' => 'Laguna Depot',         'dest' => 'Alabang Terminal',        'depart' => '08:10', 'arrive' => '09:05', 'duration' => '55m',    'distance' => '22.3 km', 'avg_speed' => '38 km/h', 'fuel' => '6.4 L', 'status' => 'Completed'],
-    ['id' => 'TRP-2085', 'driver' => 'Joanna Reforsado', 'vehicle' => 'TRK-106', 'origin' => 'Caloocan Yard',        'dest' => 'Valenzuela Hub',          'depart' => '09:30', 'arrive' => null,     'duration' => 'Active', 'distance' => '—',       'avg_speed' => '41 km/h', 'fuel' => '—',    'status' => 'Active'],
-];
+$tripRecords = collect(\Illuminate\Support\Facades\DB::table('trip_records')
+        ->leftJoin('drivers', 'drivers.id', '=', 'trip_records.driver_id')
+        ->leftJoin('users', 'users.id', '=', 'drivers.user_id')
+        ->leftJoin('vehicles', 'vehicles.id', '=', 'trip_records.vehicle_id')
+        ->orderByDesc('trip_records.id')
+        ->limit(12)
+        ->get(['trip_records.*', 'users.name as user_name', 'drivers.name as driver_name', 'vehicles.vehicle_code'])
+    )->map(function ($t) {
+        $driverName = $t->user_name ?: ($t->driver_name ?: 'Unassigned');
+        $depart = $t->departure_time ? date('H:i', strtotime($t->departure_time)) : '—';
+        $arrive = $t->actual_arrival ? date('H:i', strtotime($t->actual_arrival)) : null;
+        return [
+            'id' => 'TRP-' . $t->id,
+            'driver' => $driverName,
+            'vehicle' => $t->vehicle_code ?? '—',
+            'origin' => $t->origin ?? '—',
+            'dest' => $t->destination ?? '—',
+            'depart' => $depart,
+            'arrive' => $arrive,
+            'duration' => $t->total_duration ? $t->total_duration . 'm' : '—',
+            'distance' => $t->total_distance !== null ? number_format((float)$t->total_distance, 1) . ' km' : '—',
+            'avg_speed' => ($t->total_distance !== null && $t->total_duration > 0)
+                ? round(((float)$t->total_distance) / ($t->total_duration / 60), 1) . ' km/h'
+                : '—',
+            'fuel' => $t->fuel_consumption !== null ? number_format((float)$t->fuel_consumption, 1) . ' L' : '—',
+            'status' => $t->status,
+        ];
+    })->all();
 
-$safetyEvents = [
-    ['driver' => 'Bong Dela Cruz',  'type' => 'Overspeeding',        'detail' => 'Speed 92 km/h on EDSA',         'severity' => 'high',   'time' => '07:12'],
-    ['driver' => 'Tess Gonzales',   'type' => 'Route Deviation',     'detail' => '4.2 km off designated route',   'severity' => 'medium', 'time' => '08:45'],
-    ['driver' => 'Raul Dizon',      'type' => 'Excessive Idle Time', 'detail' => '38 minutes stationary, Pier 3', 'severity' => 'medium', 'time' => '09:20'],
-    ['driver' => 'Liza Mercado',    'type' => 'Traffic Violation',   'detail' => 'Running red light, C-5',         'severity' => 'high',   'time' => '06:55'],
-    ['driver' => 'Marco Santos',    'type' => 'Overspeeding',        'detail' => 'Speed 78 km/h in 60 zone',      'severity' => 'medium', 'time' => '10:05'],
-];
+// No safety-event table exists yet; show an empty state instead of fake incidents.
+$safetyEvents = [];
 
-$monthlyLabels   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug'];
-$monthlyScores   = [82, 84, 83, 87, 89, 91, 90, 93];
-$monthlyTrips    = [88, 92, 86, 102, 110, 118, 112, 124];
-$fuelMonthly     = [9.1, 9.3, 9.0, 9.5, 9.7, 10.1, 9.9, 10.4];
+$monthlyLabels = [];
+$monthlyScores = [];
+$monthlyTrips  = [];
+$fuelMonthly   = [];
+for ($i = 7; $i >= 0; $i--) {
+    $monthStart = date('Y-m-01', strtotime("first day of -{$i} month"));
+    $monthEnd   = date('Y-m-t', strtotime($monthStart));
+    $agg = \Illuminate\Support\Facades\DB::table('trip_records')
+        ->whereBetween('created_at', [$monthStart . ' 00:00:00', $monthEnd . ' 23:59:59'])
+        ->selectRaw('COUNT(*) as trips, COALESCE(SUM(total_distance),0) as distance, COALESCE(SUM(fuel_consumption),0) as fuel')
+        ->first();
+
+    $monthlyLabels[] = date('M', strtotime($monthStart));
+    $monthlyScores[] = $avgScore;
+    $monthlyTrips[]  = (int)($agg->trips ?? 0);
+    $fuelMonthly[]   = ($agg->fuel ?? 0) > 0 ? round(((float)$agg->distance) / (float)$agg->fuel, 1) : 0;
+}
 ?>
 
 <style>
@@ -320,11 +383,9 @@ $fuelMonthly     = [9.1, 9.3, 9.0, 9.5, 9.7, 10.1, 9.9, 10.4];
                 <div class="da-form-group">
                     <label>Vehicle</label>
                     <select id="tf-vehicle">
-                        <option>TRK-101 – Heavy Cargo Truck</option>
-                        <option>TRK-102 – Refrigerated Transport</option>
-                        <option>TRK-103 – Container Hauler</option>
-                        <option>TRK-105 – Delivery Van</option>
-                        <option>TRK-106 – Express Van</option>
+                        <?php foreach (($dashboard['vehicleOptions'] ?? []) as $v): ?>
+                            <option value="<?= (int)$v->id ?>"><?= htmlspecialchars(trim(($v->name ?? '') . ' ' . ($v->plate_number ?? ''))) ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 <div class="da-form-group">
@@ -643,7 +704,7 @@ $fuelMonthly     = [9.1, 9.3, 9.0, 9.5, 9.7, 10.1, 9.9, 10.4];
         </div>
         <div class="da-kpi">
             <div class="da-kpi-label">Fleet Avg KM/L</div>
-            <div class="da-kpi-value" style="color:var(--blue)"><?= number_format(array_sum(array_column($driverData,'km_per_liter'))/count($driverData),1) ?></div>
+            <div class="da-kpi-value" style="color:var(--blue)"><?= count($driverData) > 0 ? number_format(array_sum(array_column($driverData,'km_per_liter'))/count($driverData),1) : '0.0' ?></div>
             <div class="da-kpi-sub">All drivers combined</div>
         </div>
     </div>
@@ -1033,7 +1094,9 @@ function setupTimer() {
 
 function handleStartTrip() {
     const driver  = document.querySelector('#tf-driver option:checked').text;
+    const driverId = document.querySelector('#tf-driver option:checked').value;
     const vehicle = document.querySelector('#tf-vehicle option:checked').text;
+    const vehicleId = document.querySelector('#tf-vehicle option:checked').value;
     const origin  = document.getElementById('tf-origin').value;
     const dest    = document.getElementById('tf-dest').value;
     const now     = new Date();
@@ -1056,7 +1119,7 @@ function handleStartTrip() {
     fetch('<?= $dashboard['basePath'] ?>/api/trip/start', {
         method: 'POST',
         headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ vehicle_id: 1, origin, destination: dest, origin_lat: 14.5995, origin_lng: 120.9842, dest_lat: 14.6500, dest_lng: 121.0300 })
+        body: JSON.stringify({ vehicle_id: Number(vehicleId), driver_id: Number(driverId), origin, destination: dest })
     }).catch(() => {}); // graceful fail
 }
 

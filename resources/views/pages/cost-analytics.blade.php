@@ -7,6 +7,8 @@ $breakdown = $finance['breakdown'];
 
 <style>
 .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem; }
+.dashboard-grid-wide { grid-template-columns: minmax(0,2fr) minmax(0,1fr); }
+@media (max-width: 900px) { .dashboard-grid-wide { grid-template-columns: 1fr; } }
 .card { background: white; border-radius: 8px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
 .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
 .card-title { font-size: 1.125rem; font-weight: 600; color: #111827; margin: 0; }
@@ -23,7 +25,7 @@ $breakdown = $finance['breakdown'];
             <p class="eyebrow">Financial Overview</p>
             <h3>Cost Analytics</h3>
         </div>
-        <button class="pill-button" type="button" onclick="openExpenseModal()">Log Expense</button>
+        <?php if ($dashboard['isAdmin']): ?><button class="pill-button" type="button" onclick="openExpenseModal()">Log Expense</button><?php endif; ?>
     </div>
 
     <?php if (session('status')): ?>
@@ -56,7 +58,7 @@ $breakdown = $finance['breakdown'];
         <?php endforeach; ?>
     </div>
 
-    <div class="dashboard-grid" style="grid-template-columns: 2fr 1fr;">
+    <div class="dashboard-grid dashboard-grid-wide">
         <div class="card">
             <div class="card-header">
                 <h3 class="card-title">Monthly Expenses Trend</h3>
@@ -79,6 +81,7 @@ $breakdown = $finance['breakdown'];
 </section>
 
 <!-- Modal: Log Expense (Maintenance) -->
+<?php if ($dashboard['isAdmin']): ?>
 <div id="expense-modal" class="modal-backdrop" style="display:none;">
     <div class="modal-card">
         <div class="modal-header">
@@ -111,6 +114,7 @@ $breakdown = $finance['breakdown'];
         </form>
     </div>
 </div>
+<?php endif; ?>
 
 <script>
 function openExpenseModal() {

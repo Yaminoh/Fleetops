@@ -1,4 +1,6 @@
 <div class="fleet-command-wrapper">
+    <?php if (session('success')): ?><div style="padding:12px 16px;border:1px solid #86efac;border-radius:10px;background:#f0fdf4;color:#166534;">✓ <?= htmlspecialchars(session('success'), ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+    <?php if ($errors->any()): ?><div style="padding:12px 16px;border:1px solid #fca5a5;border-radius:10px;background:#fef2f2;color:#991b1b;"><?= htmlspecialchars($errors->first(), ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
     <!-- Fleet Command Top Bar Header -->
     <div class="fleet-command-header">
         <div>
@@ -9,9 +11,9 @@
             <button class="btn-export" onclick="exportFleetCSV()">
                 <span class="btn-icon">📊</span> Export Fleet
             </button>
-            <button class="btn-add-vehicle" onclick="openAddVehicleModal()">
+            <?php if ($dashboard['isAdmin']): ?><button class="btn-add-vehicle" onclick="openAddVehicleModal()">
                 <span class="btn-icon">+</span> Add New Vehicle
-            </button>
+            </button><?php endif; ?>
         </div>
     </div>
 
@@ -35,115 +37,25 @@
                         <th>PLATE NO.</th>
                         <th>TYPE</th>
                         <th>BRAND & MODEL</th>
-                        <th>CAPACITY</th>
-                        <th>ODOMETER</th>
                         <th>STATUS</th>
-                        <th class="text-right">ACTIONS</th>
+                        <th class="text-right"><?= $dashboard['isAdmin'] ? 'ACTIONS' : 'VIEW' ?></th>
                     </tr>
                 </thead>
                 <tbody id="vehicle-table-body">
-                    <!-- Row 1 -->
-                    <tr data-status="available" data-id="VHC-001">
-                        <td><strong class="vehicle-id-text">VHC-001</strong></td>
-                        <td><span class="plate-no-link">ABC-1234</span></td>
-                        <td>Truck</td>
-                        <td>Isuzu Giga (2022)</td>
-                        <td>10,000 kg</td>
-                        <td>45,320 km</td>
-                        <td><span class="status-pill-badge badge-available">Available</span></td>
-                        <td class="text-right action-links">
-                            <a href="<?= htmlspecialchars($dashboard['basePath'] . '/routes?vehicle=VHC-001') ?>" class="action-btn map-link"><span class="icon-red">📍</span> Map</a>
-                            <button class="action-btn view-link" onclick="viewVehicleDetails('VHC-001', 'ABC-1234', 'Truck', 'Isuzu Giga (2022)', '10,000 kg', '45,320 km', 'Available')">View</button>
-                            <button class="action-btn edit-link" onclick="editVehicle('VHC-001', 'ABC-1234', 'Truck', 'Isuzu Giga (2022)', '10,000 kg', '45,320 km', 'Available')">Edit</button>
-                            <button class="action-btn service-link" onclick="openLogServiceModal('VHC-001', 'Isuzu Giga (2022)')"><span class="icon-wrench">🔧</span> Log Service</button>
-                            <button class="action-btn delete-link" onclick="deleteVehicleRow(this, 'VHC-001')">Delete</button>
-                        </td>
-                    </tr>
-                    <!-- Row 2 -->
-                    <tr data-status="in transit" data-id="VHC-002">
-                        <td><strong class="vehicle-id-text">VHC-002</strong></td>
-                        <td><span class="plate-no-link">DEF-5678</span></td>
-                        <td>Van</td>
-                        <td>Toyota Hiace (2021)</td>
-                        <td>2,000 kg</td>
-                        <td>78,100 km</td>
-                        <td><span class="status-pill-badge badge-in-transit">In Transit</span></td>
-                        <td class="text-right action-links">
-                            <a href="<?= htmlspecialchars($dashboard['basePath'] . '/routes?vehicle=VHC-002') ?>" class="action-btn map-link"><span class="icon-red">📍</span> Map</a>
-                            <button class="action-btn view-link" onclick="viewVehicleDetails('VHC-002', 'DEF-5678', 'Van', 'Toyota Hiace (2021)', '2,000 kg', '78,100 km', 'In Transit')">View</button>
-                            <button class="action-btn edit-link" onclick="editVehicle('VHC-002', 'DEF-5678', 'Van', 'Toyota Hiace (2021)', '2,000 kg', '78,100 km', 'In Transit')">Edit</button>
-                            <button class="action-btn service-link" onclick="openLogServiceModal('VHC-002', 'Toyota Hiace (2021)')"><span class="icon-wrench">🔧</span> Log Service</button>
-                            <button class="action-btn delete-link" onclick="deleteVehicleRow(this, 'VHC-002')">Delete</button>
-                        </td>
-                    </tr>
-                    <!-- Row 3 -->
-                    <tr data-status="available" data-id="VHC-003">
-                        <td><strong class="vehicle-id-text">VHC-003</strong></td>
-                        <td><span class="plate-no-link">GHI-9012</span></td>
-                        <td>Motorcycle</td>
-                        <td>Honda CRF300L (2023)</td>
-                        <td>100 kg</td>
-                        <td>12,400 km</td>
-                        <td><span class="status-pill-badge badge-available">Available</span></td>
-                        <td class="text-right action-links">
-                            <a href="<?= htmlspecialchars($dashboard['basePath'] . '/routes?vehicle=VHC-003') ?>" class="action-btn map-link"><span class="icon-red">📍</span> Map</a>
-                            <button class="action-btn view-link" onclick="viewVehicleDetails('VHC-003', 'GHI-9012', 'Motorcycle', 'Honda CRF300L (2023)', '100 kg', '12,400 km', 'Available')">View</button>
-                            <button class="action-btn edit-link" onclick="editVehicle('VHC-003', 'GHI-9012', 'Motorcycle', 'Honda CRF300L (2023)', '100 kg', '12,400 km', 'Available')">Edit</button>
-                            <button class="action-btn service-link" onclick="openLogServiceModal('VHC-003', 'Honda CRF300L (2023)')"><span class="icon-wrench">🔧</span> Log Service</button>
-                            <button class="action-btn delete-link" onclick="deleteVehicleRow(this, 'VHC-003')">Delete</button>
-                        </td>
-                    </tr>
-                    <!-- Row 4 -->
-                    <tr data-status="maintenance" data-id="VHC-004">
-                        <td><strong class="vehicle-id-text">VHC-004</strong></td>
-                        <td><span class="plate-no-link">JKL-3456</span></td>
-                        <td>Truck</td>
-                        <td>Mitsubishi Canter (2020)</td>
-                        <td>5,000 kg</td>
-                        <td>120,800 km</td>
-                        <td><span class="status-pill-badge badge-maintenance">Maintenance</span></td>
-                        <td class="text-right action-links">
-                            <a href="<?= htmlspecialchars($dashboard['basePath'] . '/routes?vehicle=VHC-004') ?>" class="action-btn map-link"><span class="icon-red">📍</span> Map</a>
-                            <button class="action-btn view-link" onclick="viewVehicleDetails('VHC-004', 'JKL-3456', 'Truck', 'Mitsubishi Canter (2020)', '5,000 kg', '120,800 km', 'Maintenance')">View</button>
-                            <button class="action-btn edit-link" onclick="editVehicle('VHC-004', 'JKL-3456', 'Truck', 'Mitsubishi Canter (2020)', '5,000 kg', '120,800 km', 'Maintenance')">Edit</button>
-                            <button class="action-btn service-link" onclick="openLogServiceModal('VHC-004', 'Mitsubishi Canter (2020)')"><span class="icon-wrench">🔧</span> Log Service</button>
-                            <button class="action-btn delete-link" onclick="deleteVehicleRow(this, 'VHC-004')">Delete</button>
-                        </td>
-                    </tr>
-                    <!-- Row 5 -->
-                    <tr data-status="reserved" data-id="VHC-005">
-                        <td><strong class="vehicle-id-text">VHC-005</strong></td>
-                        <td><span class="plate-no-link">MNO-7890</span></td>
-                        <td>Van</td>
-                        <td>Ford Transit (2022)</td>
-                        <td>3,500 kg</td>
-                        <td>34,500 km</td>
-                        <td><span class="status-pill-badge badge-reserved">Reserved</span></td>
-                        <td class="text-right action-links">
-                            <a href="<?= htmlspecialchars($dashboard['basePath'] . '/routes?vehicle=VHC-005') ?>" class="action-btn map-link"><span class="icon-red">📍</span> Map</a>
-                            <button class="action-btn view-link" onclick="viewVehicleDetails('VHC-005', 'MNO-7890', 'Van', 'Ford Transit (2022)', '3,500 kg', '34,500 km', 'Reserved')">View</button>
-                            <button class="action-btn edit-link" onclick="editVehicle('VHC-005', 'MNO-7890', 'Van', 'Ford Transit (2022)', '3,500 kg', '34,500 km', 'Reserved')">Edit</button>
-                            <button class="action-btn service-link" onclick="openLogServiceModal('VHC-005', 'Ford Transit (2022)')"><span class="icon-wrench">🔧</span> Log Service</button>
-                            <button class="action-btn delete-link" onclick="deleteVehicleRow(this, 'VHC-005')">Delete</button>
-                        </td>
-                    </tr>
-                    <!-- Row 6 -->
-                    <tr data-status="inactive" data-id="VHC-006">
-                        <td><strong class="vehicle-id-text">VHC-006</strong></td>
-                        <td><span class="plate-no-link">PQR-1234</span></td>
-                        <td>Sedan</td>
-                        <td>Toyota Vios (2023)</td>
-                        <td>500 kg</td>
-                        <td>8,200 km</td>
-                        <td><span class="status-pill-badge badge-inactive">Inactive</span></td>
-                        <td class="text-right action-links">
-                            <a href="<?= htmlspecialchars($dashboard['basePath'] . '/routes?vehicle=VHC-006') ?>" class="action-btn map-link"><span class="icon-red">📍</span> Map</a>
-                            <button class="action-btn view-link" onclick="viewVehicleDetails('VHC-006', 'PQR-1234', 'Sedan', 'Toyota Vios (2023)', '500 kg', '8,200 km', 'Inactive')">View</button>
-                            <button class="action-btn edit-link" onclick="editVehicle('VHC-006', 'PQR-1234', 'Sedan', 'Toyota Vios (2023)', '500 kg', '8,200 km', 'Inactive')">Edit</button>
-                            <button class="action-btn service-link" onclick="openLogServiceModal('VHC-006', 'Toyota Vios (2023)')"><span class="icon-wrench">🔧</span> Log Service</button>
-                            <button class="action-btn delete-link" onclick="deleteVehicleRow(this, 'VHC-006')">Delete</button>
-                        </td>
-                    </tr>
+                    <?php foreach (($dashboard['vehicles'] ?? []) as $vehicle): ?>
+                        <tr data-status="<?= in_array(strtolower($vehicle->status), ['active', 'available'], true) ? 'available' : strtolower(htmlspecialchars($vehicle->status, ENT_QUOTES, 'UTF-8')) ?>">
+                            <td><strong class="vehicle-id-text"><?= htmlspecialchars($vehicle->vehicle_code, ENT_QUOTES, 'UTF-8') ?></strong></td>
+                            <td><span class="plate-no-link"><?= htmlspecialchars($vehicle->plate_number, ENT_QUOTES, 'UTF-8') ?></span></td>
+                            <td><?= htmlspecialchars($vehicle->type ?? '—', ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars($vehicle->name ?? '—', ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><span class="status-pill-badge"><?= htmlspecialchars($vehicle->status, ENT_QUOTES, 'UTF-8') ?></span></td>
+                            <td class="text-right">
+                                <button type="button" class="action-btn view-link" onclick="viewVehicleDetails(this)" data-code="<?= htmlspecialchars($vehicle->vehicle_code, ENT_QUOTES, 'UTF-8') ?>" data-plate="<?= htmlspecialchars($vehicle->plate_number, ENT_QUOTES, 'UTF-8') ?>" data-type="<?= htmlspecialchars($vehicle->type ?? '', ENT_QUOTES, 'UTF-8') ?>" data-name="<?= htmlspecialchars($vehicle->name ?? '', ENT_QUOTES, 'UTF-8') ?>" data-odometer="<?= (int) ($vehicle->odometer ?? 0) ?>" data-status="<?= htmlspecialchars($vehicle->status, ENT_QUOTES, 'UTF-8') ?>">View</button>
+                                <?php if ($dashboard['isAdmin']): ?><button type="button" class="action-btn edit-link" onclick="editVehicle(this)" data-id="<?= (int) $vehicle->id ?>" data-code="<?= htmlspecialchars($vehicle->vehicle_code, ENT_QUOTES, 'UTF-8') ?>" data-plate="<?= htmlspecialchars($vehicle->plate_number, ENT_QUOTES, 'UTF-8') ?>" data-type="<?= htmlspecialchars($vehicle->type ?? '', ENT_QUOTES, 'UTF-8') ?>" data-name="<?= htmlspecialchars($vehicle->name ?? '', ENT_QUOTES, 'UTF-8') ?>" data-odometer="<?= (int) ($vehicle->odometer ?? 0) ?>" data-status="<?= htmlspecialchars($vehicle->status, ENT_QUOTES, 'UTF-8') ?>">Edit</button><?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    <?php if (count($dashboard['vehicles'] ?? []) === 0): ?><tr><td colspan="6">No vehicles are recorded yet.</td></tr><?php endif; ?>
                 </tbody>
             </table>
         </div>
@@ -151,25 +63,29 @@
 </div>
 
 <!-- Modal: Add New Vehicle -->
+<?php if ($dashboard['isAdmin']): ?>
 <div id="add-vehicle-modal" class="modal-backdrop" style="display: none;">
     <div class="modal-card">
         <div class="modal-header">
             <h3>+ Add New Vehicle</h3>
             <button class="close-btn" onclick="closeAddVehicleModal()">✕</button>
         </div>
-        <form onsubmit="submitNewVehicle(event)">
+        <form id="vehicle-form" method="POST" action="<?= route('vehicles.store') ?>">
+            <?= csrf_field() ?>
+            <input type="hidden" id="vehicle-method" name="_method" value="">
             <div class="form-grid">
                 <div class="form-group">
                     <label>Vehicle ID</label>
-                    <input type="text" id="add-vhc-id" class="form-control" placeholder="e.g. VHC-007" required />
+                    <input type="text" id="add-vhc-id" name="vehicle_code" class="form-control" value="<?= htmlspecialchars($dashboard['nextVehicleCode'] ?? '', ENT_QUOTES, 'UTF-8') ?>" readonly maxlength="50" />
+                    <small class="settings-help">Auto-generated from the existing fleet sequence.</small>
                 </div>
                 <div class="form-group">
                     <label>Plate No.</label>
-                    <input type="text" id="add-plate" class="form-control" placeholder="e.g. XYZ-9988" required />
+                    <input type="text" id="add-plate" name="plate_number" class="form-control" placeholder="e.g. XYZ-9988" required maxlength="30" />
                 </div>
                 <div class="form-group">
                     <label>Vehicle Type</label>
-                    <select id="add-type" class="form-control" required>
+                    <select id="add-type" name="type" class="form-control" required>
                         <option value="Truck">Truck</option>
                         <option value="Van">Van</option>
                         <option value="Motorcycle">Motorcycle</option>
@@ -179,19 +95,16 @@
                 </div>
                 <div class="form-group">
                     <label>Brand & Model (Year)</label>
-                    <input type="text" id="add-brand" class="form-control" placeholder="e.g. Isuzu Elf (2023)" required />
-                </div>
-                <div class="form-group">
-                    <label>Payload Capacity (kg)</label>
-                    <input type="text" id="add-capacity" class="form-control" placeholder="e.g. 4,500 kg" required />
+                    <input type="text" id="add-brand" name="name" class="form-control" placeholder="e.g. Isuzu Elf (2023)" required maxlength="150" />
                 </div>
                 <div class="form-group">
                     <label>Odometer Reading (km)</label>
-                    <input type="text" id="add-odometer" class="form-control" placeholder="e.g. 15,200 km" required />
+                    <input type="number" id="add-odometer" name="odometer" class="form-control" placeholder="e.g. 15200" min="0" />
                 </div>
                 <div class="form-group full-width">
                     <label>Initial Status</label>
-                    <select id="add-status" class="form-control" required>
+                    <select id="add-status" name="status" class="form-control" required>
+                        <option value="Active">Available</option>
                         <option value="Available">Available</option>
                         <option value="In Transit">In Transit</option>
                         <option value="Reserved">Reserved</option>
@@ -207,6 +120,7 @@
         </form>
     </div>
 </div>
+<?php endif; ?>
 
 <!-- Modal: View Vehicle Details -->
 <div id="view-vehicle-modal" class="modal-backdrop" style="display: none;">
@@ -218,75 +132,33 @@
         <div class="modal-body">
             <div class="details-summary-header">
                 <div>
-                    <span class="badge-code-lg" id="view-modal-id">VHC-001</span>
-                    <h2 id="view-modal-brand" class="margin-top-xs">Isuzu Giga (2022)</h2>
-                    <p class="plate-text-lg" id="view-modal-plate">Plate: ABC-1234</p>
+                    <span class="badge-code-lg" id="view-modal-id"></span>
+                    <h2 id="view-modal-brand" class="margin-top-xs"></h2>
+                    <p class="plate-text-lg" id="view-modal-plate"></p>
                 </div>
                 <div id="view-modal-status-badge">
-                    <span class="status-pill-badge badge-available">Available</span>
+                    <span class="status-pill-badge"></span>
                 </div>
             </div>
             <hr class="divider" />
             <div class="details-grid">
                 <div class="details-item">
                     <span class="details-label">Type</span>
-                    <strong id="view-modal-type">Truck</strong>
-                </div>
-                <div class="details-item">
-                    <span class="details-label">Payload Capacity</span>
-                    <strong id="view-modal-capacity">10,000 kg</strong>
+                    <strong id="view-modal-type"></strong>
                 </div>
                 <div class="details-item">
                     <span class="details-label">Odometer</span>
-                    <strong id="view-modal-odometer">45,320 km</strong>
+                    <strong id="view-modal-odometer"></strong>
                 </div>
                 <div class="details-item">
                     <span class="details-label">Next Service Due</span>
-                    <strong>Sep 15, 2026</strong>
+                    <strong>Not set</strong>
                 </div>
             </div>
         </div>
         <div class="modal-footer margin-top-md">
             <button class="btn-secondary" onclick="closeViewModal()">Close</button>
         </div>
-    </div>
-</div>
-
-<!-- Modal: Log Service Maintenance -->
-<div id="log-service-modal" class="modal-backdrop" style="display: none;">
-    <div class="modal-card">
-        <div class="modal-header">
-            <h3>🔧 Log Vehicle Service Maintenance</h3>
-            <button class="close-btn" onclick="closeLogServiceModal()">✕</button>
-        </div>
-        <form onsubmit="submitServiceLog(event)">
-            <input type="hidden" id="service-vehicle-id" />
-            <div class="form-group">
-                <label>Target Vehicle:</label>
-                <input type="text" id="service-vehicle-name" class="form-control" readonly />
-            </div>
-            <div class="form-group margin-top-sm">
-                <label>Service Maintenance Type:</label>
-                <select id="service-type" class="form-control">
-                    <option value="Routine Oil & Filter Change">Routine Oil & Filter Change</option>
-                    <option value="Brake Pad Replacement">Brake Pad Replacement</option>
-                    <option value="Tire Alignment & Rotation">Tire Alignment & Rotation</option>
-                    <option value="Engine Overhaul & Diagnostics">Engine Overhaul & Diagnostics</option>
-                </select>
-            </div>
-            <div class="form-group margin-top-sm">
-                <label>Service Cost (PHP ₱):</label>
-                <input type="number" id="service-cost" class="form-control" placeholder="e.g. 8500" required />
-            </div>
-            <div class="form-group margin-top-sm">
-                <label>Mechanic Notes / Description:</label>
-                <textarea id="service-notes" class="form-control" rows="3" placeholder="Replaced engine oil filter and calibrated brake pads."></textarea>
-            </div>
-            <div class="modal-footer margin-top-md">
-                <button type="button" class="btn-secondary" onclick="closeLogServiceModal()">Cancel</button>
-                <button type="submit" class="btn-primary">Record Maintenance</button>
-            </div>
-        </form>
     </div>
 </div>
 
@@ -518,6 +390,10 @@
 .form-group.full-width {
     grid-column: span 2;
 }
+@media (max-width: 560px) {
+    .form-grid, .details-grid { grid-template-columns: 1fr; }
+    .form-group.full-width { grid-column: span 1; }
+}
 .details-summary-header h2 { margin: 0; font-size: 1.3rem; }
 .badge-code-lg { background: #dbeafe; color: #1e40af; padding: 4px 10px; border-radius: 8px; font-weight: 800; font-size: 0.8rem; }
 .plate-text-lg { margin: 4px 0 0; color: #64748b; font-size: 0.9rem; font-weight: 600; }
@@ -530,6 +406,8 @@
 
 <!-- JavaScript Logic for Fleet Command Operations -->
 <script>
+const basePath = <?= json_encode($dashboard['basePath']) ?>;
+
 function filterByStatus(statusKey, btnElem) {
     document.querySelectorAll('.status-filter-btn').forEach(btn => btn.classList.remove('active'));
     btnElem.classList.add('active');
@@ -547,59 +425,27 @@ function filterByStatus(statusKey, btnElem) {
 
 function openAddVehicleModal() {
     document.getElementById('add-vehicle-modal').style.display = 'flex';
+    const idInput = document.getElementById('add-vhc-id');
+    if (idInput && document.querySelector('#add-vehicle-modal h3').textContent.includes('Add')) {
+        idInput.value = "<?= htmlspecialchars($dashboard['nextVehicleCode'] ?? '', ENT_QUOTES, 'UTF-8') ?>";
+    }
 }
 function closeAddVehicleModal() {
     document.getElementById('add-vehicle-modal').style.display = 'none';
+    document.getElementById('vehicle-form').reset();
+    document.getElementById('vehicle-form').action = "<?= route('vehicles.store') ?>";
+    document.getElementById('vehicle-method').value = '';
+    document.querySelector('#add-vehicle-modal h3').textContent = '+ Add New Vehicle';
+    const idInput = document.getElementById('add-vhc-id');
+    if (idInput) { idInput.value = "<?= htmlspecialchars($dashboard['nextVehicleCode'] ?? '', ENT_QUOTES, 'UTF-8') ?>"; }
 }
 
-function submitNewVehicle(e) {
-    e.preventDefault();
-    const vId = document.getElementById('add-vhc-id').value;
-    const plate = document.getElementById('add-plate').value;
-    const type = document.getElementById('add-type').value;
-    const brand = document.getElementById('add-brand').value;
-    const cap = document.getElementById('add-capacity').value;
-    const odo = document.getElementById('add-odometer').value;
-    const status = document.getElementById('add-status').value;
-
-    const badgeClass = status === 'Available' ? 'badge-available' :
-                       (status === 'In Transit' ? 'badge-in-transit' :
-                       (status === 'Reserved' ? 'badge-reserved' :
-                       (status === 'Maintenance' ? 'badge-maintenance' : 'badge-inactive')));
-
-    const tbody = document.getElementById('vehicle-table-body');
-    const newTr = document.createElement('tr');
-    newTr.setAttribute('data-status', status.toLowerCase());
-    newTr.setAttribute('data-id', vId);
-
-    newTr.innerHTML = `
-        <td><strong class="vehicle-id-text">${vId}</strong></td>
-        <td><span class="plate-no-link">${plate}</span></td>
-        <td>${type}</td>
-        <td>${brand}</td>
-        <td>${cap}</td>
-        <td>${odo}</td>
-        <td><span class="status-pill-badge ${badgeClass}">${status}</span></td>
-        <td class="text-right action-links">
-            <a href="${basePath}/routes?vehicle=${vId}" class="action-btn map-link"><span class="icon-red">📍</span> Map</a>
-            <button class="action-btn view-link" onclick="viewVehicleDetails('${vId}', '${plate}', '${type}', '${brand}', '${cap}', '${odo}', '${status}')">View</button>
-            <button class="action-btn edit-link" onclick="editVehicle('${vId}', '${plate}', '${type}', '${brand}', '${cap}', '${odo}', '${status}')">Edit</button>
-            <button class="action-btn service-link" onclick="openLogServiceModal('${vId}', '${brand}')"><span class="icon-wrench">🔧</span> Log Service</button>
-            <button class="action-btn delete-link" onclick="deleteVehicleRow(this, '${vId}')">Delete</button>
-        </td>
-    `;
-    tbody.prepend(newTr);
-
-    closeAddVehicleModal();
-    alert(`Vehicle ${vId} registered successfully!`);
-}
-
-function viewVehicleDetails(vId, plate, type, brand, cap, odo, status) {
+function viewVehicleDetails(button) {
+    const {code: vId, plate, type, name: brand, odometer: odo, status} = button.dataset;
     document.getElementById('view-modal-id').innerText = vId;
     document.getElementById('view-modal-brand').innerText = brand;
     document.getElementById('view-modal-plate').innerText = 'Plate: ' + plate;
     document.getElementById('view-modal-type').innerText = type;
-    document.getElementById('view-modal-capacity').innerText = cap;
     document.getElementById('view-modal-odometer').innerText = odo;
 
     const badgeClass = status === 'Available' ? 'badge-available' :
@@ -614,57 +460,32 @@ function closeViewModal() {
     document.getElementById('view-vehicle-modal').style.display = 'none';
 }
 
-function editVehicle(vId, plate, type, brand, cap, odo, status) {
+function editVehicle(button) {
+    const {id, code, plate, type, name, odometer, status} = button.dataset;
     openAddVehicleModal();
-    document.getElementById('add-vhc-id').value = vId;
+    document.querySelector('#add-vehicle-modal h3').textContent = 'Edit Vehicle';
+    document.querySelector('#vehicle-form').action = `<?= url('/vehicles') ?>/${id}`;
+    document.getElementById('vehicle-method').value = 'PUT';
+    document.getElementById('add-vhc-id').value = code;
     document.getElementById('add-plate').value = plate;
     document.getElementById('add-type').value = type;
-    document.getElementById('add-brand').value = brand;
-    document.getElementById('add-capacity').value = cap;
-    document.getElementById('add-odometer').value = odo;
+    document.getElementById('add-brand').value = name;
+    document.getElementById('add-odometer').value = odometer;
     document.getElementById('add-status').value = status;
 }
 
-function openLogServiceModal(vId, brand) {
-    document.getElementById('service-vehicle-id').value = vId;
-    document.getElementById('service-vehicle-name').value = `${vId} - ${brand}`;
-    document.getElementById('log-service-modal').style.display = 'flex';
-}
-function closeLogServiceModal() {
-    document.getElementById('log-service-modal').style.display = 'none';
-}
-
-function submitServiceLog(e) {
-    e.preventDefault();
-    const vId = document.getElementById('service-vehicle-id').value;
-    const type = document.getElementById('service-type').value;
-    const cost = document.getElementById('service-cost').value;
-
-    alert(`Service log for vehicle ${vId} (${type} - ₱${cost}) recorded successfully!`);
-    closeLogServiceModal();
-}
-
-function deleteVehicleRow(btn, vId) {
-    if (confirm(`Are you sure you want to delete vehicle ${vId} from fleet inventory?`)) {
-        const row = btn.closest('tr');
-        row.remove();
-    }
-}
-
 function exportFleetCSV() {
-    let csv = "VEHICLE ID,PLATE NO,TYPE,BRAND & MODEL,CAPACITY,ODOMETER,STATUS\n";
+    let csv = "VEHICLE ID,PLATE NO,TYPE,BRAND & MODEL,STATUS\n";
     const rows = document.querySelectorAll('#vehicle-table-body tr');
     rows.forEach(r => {
         const cols = r.querySelectorAll('td');
-        if (cols.length >= 7) {
+        if (cols.length >= 6 && !r.querySelector('td[colspan]')) {
             const rowData = [
                 cols[0].innerText.trim(),
                 cols[1].innerText.trim(),
                 cols[2].innerText.trim(),
                 `"${cols[3].innerText.trim()}"`,
-                cols[4].innerText.trim(),
-                cols[5].innerText.trim(),
-                cols[6].innerText.trim()
+                cols[4].innerText.trim()
             ];
             csv += rowData.join(",") + "\n";
         }
@@ -677,4 +498,7 @@ function exportFleetCSV() {
     a.setAttribute('download', `Fleet_Inventory_${new Date().toISOString().slice(0,10)}.csv`);
     a.click();
 }
+<?php if ($errors->any() && $dashboard['isAdmin']): ?>
+openAddVehicleModal();
+<?php endif; ?>
 </script>

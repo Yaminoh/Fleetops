@@ -115,8 +115,6 @@
                 </div>
                 <button type="submit" class="login-button">Sign in</button>
             </form>
-            <p class="auth-switch">New to Archon Nell? <a href="{{ route('register') }}">Create an account</a></p>
-            <div class="login-footer">Secure access to your Archon Nell workspace</div>
         </section>
     </main>
     <script>

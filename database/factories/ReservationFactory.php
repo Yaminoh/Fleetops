@@ -26,7 +26,6 @@ class ReservationFactory extends Factory
             'requested_date' => $this->faker->dateTimeBetween('now', '+30 days'),
             'requested_time' => $this->faker->optional()->time('H:i:s'),
             'vehicle_type' => $this->faker->randomElement(['SUV Cargo', 'Van Shuttle', 'Executive Sedan', 'Cargo Truck']),
-            'passenger_count' => $this->faker->numberBetween(1, 8),
             'remarks' => $this->faker->optional()->sentence(),
             'status' => $this->faker->randomElement(['Pending', 'Approved', 'Rejected']),
             'approved_by' => null,

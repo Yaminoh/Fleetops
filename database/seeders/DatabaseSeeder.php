@@ -25,13 +25,15 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        $passwordField = User::passwordColumnName();
+
         User::updateOrCreate(
             ['email' => 'reybie@fleetops.com'],
-            ['name' => 'Reybie R.', 'password' => Hash::make('password123'), 'role' => 'Admin', 'status' => 'active'],
+            ['name' => 'Reybie R.', $passwordField => Hash::make('password123'), 'role' => 'Admin', 'status' => 'active'],
         );
 
         // Coherent sample data for local demos and project defense.
-        $users = User::factory(9)->create();
+        $users = User::factory(9)->create(['role' => 'User', 'status' => 'active']);
         $vehicles = Vehicle::factory(10)->create();
         $drivers = Driver::factory(10)->recycle($users)->create();
         $reservations = Reservation::factory(10)->recycle($users)->create();

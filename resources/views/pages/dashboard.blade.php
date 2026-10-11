@@ -20,7 +20,19 @@
             </div>
             <div class="availability-layout">
                 <div class="chart-card">
-                    <div class="pie-chart"></div>
+                    @php
+                        $availability = $dashboard['vehicleAvailability'];
+                        $colors = ['Available' => 'var(--teal)', 'Booked' => 'var(--orange)', 'Maintenance' => 'var(--blue)', 'Delayed' => 'var(--gray)', 'Unavailable' => 'var(--gold)'];
+                        $segments = [];
+                        $position = 0;
+                        foreach ($availability['counts'] as $label => $count) {
+                            $end = $position + ($availability['total'] > 0 ? $count / $availability['total'] * 100 : 0);
+                            $segments[] = $colors[$label].' '.$position.'% '.$end.'%';
+                            $position = $end;
+                        }
+                        $chartBackground = $availability['total'] > 0 ? 'conic-gradient('.implode(', ', $segments).')' : 'var(--border)';
+                    @endphp
+                    <div class="pie-chart" data-total="{{ $availability['total'] }}" style="background: {{ $chartBackground }};" role="img" aria-label="{{ $availability['total'] }} vehicles total. {{ collect($availability['counts'])->map(fn ($count, $label) => $label.': '.$count)->implode(', ') }}"></div>
                     <div class="chart-caption">
                         <div><span class="dot teal"></span> Available</div>
                         <div><span class="dot orange"></span> Booked</div>
@@ -30,11 +42,9 @@
                     </div>
                 </div>
                 <div class="legend-table">
-                    <div class="legend-row"><span>Available</span><strong>198</strong></div>
-                    <div class="legend-row"><span>Booked</span><strong>27</strong></div>
-                    <div class="legend-row"><span>Maintenance</span><strong>16</strong></div>
-                    <div class="legend-row"><span>Delayed</span><strong>9</strong></div>
-                    <div class="legend-row"><span>Unavailable</span><strong>6</strong></div>
+                    @foreach ($availability['counts'] as $label => $count)
+                        <div class="legend-row"><span>{{ $label }}</span><strong>{{ $count }}</strong></div>
+                    @endforeach
                 </div>
             </div>
         </article>
@@ -45,7 +55,9 @@
                     <p class="eyebrow">Dispatch queue</p>
                     <h3>Pending Vehicle Reservations</h3>
                 </div>
-                <button class="pill-button">View All</button>
+                <a href="reservations">
+  <button class="pill-button">View All</button>
+            </a>
             </div>
             <div class="table-wrapper">
                 <table>
@@ -85,7 +97,7 @@
             <div class="list-stack">
                 <?php foreach ($dashboard['alerts'] as $alert): ?>
                     <div class="list-item">
-                        <div class="list-icon"><?= htmlspecialchars($alert['icon']) ?></div>
+                        <div class="list-icon" aria-hidden="true"><?php if (($alert['title'] ?? '') === 'Fuel Logged'): ?>&#x26FD;<?php elseif (($alert['title'] ?? '') === 'Maintenance Logged'): ?>&#x1F527;<?php else: ?><?= htmlspecialchars($alert['icon']) ?><?php endif; ?></div>
                         <div>
                             <h4><?= htmlspecialchars($alert['title']) ?></h4>
                             <p><?= htmlspecialchars($alert['detail']) ?></p>
@@ -124,8 +136,32 @@
                 </div>
             </div>
             <div class="quick-grid">
-                <?php foreach ($dashboard['quickActions'] as $action): ?>
-                    <div class="quick-item"><?= htmlspecialchars($action) ?></div>
+                <?php
+                $routePrefix = ($dashboard['basePath'] ?? '') === '/users' ? 'users.' : '';
+                $quickActionLinks = [
+                    'View Vehicles' => 'vehicles',
+                    'Review Fuel Logs' => 'fuel-logs',
+                    'View Reservations' => 'reservations',
+                    'View Routes' => 'routes',
+                    'Review Drivers' => 'drivers',
+                    'View Reports' => 'reports',
+                    'View Notifications' => 'notifications',
+                    'Settings' => 'settings',
+                    'Add Vehicle' => 'vehicles',
+                    'Log Fuel' => 'fuel-logs',
+                    'Create Reservation' => 'reservations',
+                    'Report Incident' => 'notifications',
+                    'Dispatch Log' => 'reservations',
+                    'Check Drivers' => 'drivers',
+                ];
+                foreach ($dashboard['quickActions'] as $action):
+                    $routeName = $routePrefix . ($quickActionLinks[$action] ?? '');
+                ?>
+                    <?php if ($routeName && \Illuminate\Support\Facades\Route::has($routeName)): ?>
+                        <a href="<?= route($routeName) ?>" class="quick-item"><?= htmlspecialchars($action) ?></a>
+                    <?php else: ?>
+                        <div class="quick-item"><?= htmlspecialchars($action) ?></div>
+                    <?php endif; ?>
                 <?php endforeach; ?>
             </div>
         </article>

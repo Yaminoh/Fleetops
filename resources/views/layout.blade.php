@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ asset('css/app.css') }}?v=20260814c" />
+    <link rel="stylesheet" href="{{ asset('css/app.css') }}?v=20261002" />
     <style>
       /* ── THEME OVERRIDE ───────────────────────────── */
       :root {
@@ -43,7 +43,6 @@
       [data-theme="dark"] .panel,
       [data-theme="dark"] .hero-card,
       [data-theme="dark"] .search-bar,
-      [data-theme="dark"] .profile-pill,
       [data-theme="dark"] .modal-card,
       [data-theme="dark"] .panel-card {
         background: #162032 !important;
@@ -56,20 +55,11 @@
         box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
       }
       [data-theme="dark"] .tb-icon-btn:hover { color: #4361ee !important; }
-      [data-theme="dark"] .profile-pill .pp-info strong { color: #e4eaf5 !important; }
-      [data-theme="dark"] .profile-pill .pp-info small  { color: #7a8faa !important; }
-      [data-theme="dark"] .profile-pill .pp-chevron { color: #7a8faa !important; }
-      [data-theme="dark"] .profile-pill .pp-avatar {
-        background: linear-gradient(135deg,#4361ee,#7b2ff7) !important;
-      }
-      [data-theme="dark"] .pp-menu,
       [data-theme="dark"] .sb-menu {
         background: #162032 !important;
         box-shadow: 0 12px 32px rgba(0,0,0,0.45) !important;
       }
-      [data-theme="dark"] .pp-menu-item,
       [data-theme="dark"] .sb-menu-item { color: #e4eaf5 !important; }
-      [data-theme="dark"] .pp-menu-item:hover,
       [data-theme="dark"] .sb-menu-item:hover { background: rgba(67,97,238,0.15) !important; }
       [data-theme="dark"] .search-bar input { color: #e4eaf5 !important; background: transparent !important; }
       [data-theme="dark"] .search-bar svg { color: #7a8faa !important; }
@@ -97,6 +87,13 @@
       [data-theme="dark"] .dark-mode-btn { background: #1a2840 !important; color: #e4eaf5 !important; }
       /* Dark mode topbar sun icon to indicate switch to light */
       [data-theme="dark"] #darkModeBtn svg { stroke: #f6c24f; }
+
+      .page-title {
+        margin: 0 0 16px !important;
+        color: var(--text);
+        font-size: 1.35rem;
+        font-weight: 800;
+      }
 
       /* ── Sidebar Shell ── */
       .sidebar {
@@ -296,26 +293,9 @@
         border: 2px solid var(--surface);
       }
       .tb-badge.red { background: #ef4444; color: #fff; }
-      .tb-badge.blue { background: #4361ee; color: #fff; }
 
-      /* Profile pill */
-      .profile-pill {
-        display: flex !important;
-        align-items: center !important;
-        gap: 10px !important;
-        background: var(--surface) !important;
-        padding: 7px 14px 7px 8px !important;
-        border-radius: 999px !important;
-        box-shadow: var(--shadow) !important;
-        border: none !important;
-        cursor: pointer !important;
-        transition: box-shadow 0.18s ease, transform 0.18s ease !important;
-        position: relative !important;
-      }
-      .profile-pill:hover { box-shadow: 0 8px 24px rgba(67,97,238,0.15) !important; transform: translateY(-1px) !important; }
-
-      /* Profile / sidebar user dropdown menus */
-      .pp-menu, .sb-menu {
+      /* Sidebar user dropdown menu */
+      .sb-menu {
         display: none;
         position: absolute;
         min-width: 170px;
@@ -325,11 +305,9 @@
         padding: 6px;
         z-index: 200;
       }
-      .pp-menu { top: calc(100% + 8px); right: 0; }
       .sb-menu { left: 0; bottom: calc(100% + 8px); }
-      .profile-pill.open .pp-menu,
       .sb-user.open .sb-menu { display: block; }
-      .pp-menu-item, .sb-menu-item {
+      .sb-menu-item {
         display: block;
         width: 100%;
         text-align: left;
@@ -343,27 +321,9 @@
         cursor: pointer;
         text-decoration: none;
       }
-      .pp-menu-item:hover, .sb-menu-item:hover { background: rgba(67,97,238,0.08); }
-      .pp-menu-item.danger, .sb-menu-item.danger { color: #e5484d; }
-      .pp-menu-item.danger:hover, .sb-menu-item.danger:hover { background: rgba(229,72,77,0.08); }
-      .profile-pill .pp-avatar {
-        width: 34px;
-        height: 34px;
-        border-radius: 50%;
-        background: linear-gradient(135deg,#4361ee,#7b2ff7);
-        color: #fff;
-        font-weight: 700;
-        font-size: 0.78rem;
-        display: grid;
-        place-items: center;
-        flex-shrink: 0;
-      }
-      .profile-pill .pp-info strong, .profile-pill .pp-info small { display: block; }
-      .profile-pill .pp-info strong { font-size: 0.84rem; font-weight: 700; color: var(--text); }
-      .profile-pill .pp-info small { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
-      .profile-pill .pp-chevron { color: var(--muted); margin-left: 2px; }
-      .profile-pill .pp-chevron svg { width: 14px; height: 14px; display: block; }
-
+      .sb-menu-item:hover { background: rgba(67,97,238,0.08); }
+      .sb-menu-item.danger { color: #e5484d; }
+      .sb-menu-item.danger:hover { background: rgba(229,72,77,0.08); }
       /* Other theme overrides */
       body { background: #f4f6fb !important; }
       .eyebrow { color: #4361ee !important; }
@@ -392,6 +352,117 @@
       .sidebar.collapsed .sb-collapse svg { transform: rotate(180deg); }
       .sidebar.collapsed .sb-user { justify-content: center; padding: 12px; }
       .sidebar.collapsed .sb-brand-logo-wrap { margin-right: 0 !important; }
+
+      /* ── Mobile / responsive (restored) ── */
+      .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 250;
+        background: rgba(15, 27, 56, 0.5);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.25s ease, visibility 0.25s ease;
+      }
+      @media (max-width: 1180px) and (min-width: 961px) {
+        .app-shell { flex-direction: row !important; }
+        .sidebar { width: 220px !important; min-width: 220px !important; }
+      }
+      @media (max-width: 960px) {
+        .app-shell { flex-direction: column !important; }
+        .sidebar {
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          width: 260px !important;
+          min-width: 260px !important;
+          height: 100vh !important;
+          padding: 0 !important;
+          transform: translateX(-105%);
+          transition: transform 0.25s ease;
+          z-index: 300 !important;
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28) !important;
+        }
+        .app-shell.sidebar-open .sidebar { transform: translateX(0); }
+        .sidebar.collapsed { width: 260px !important; min-width: 260px !important; }
+        .sidebar.collapsed .nav-item span:not(.nav-badge),
+        .sidebar.collapsed .sb-collapse span,
+        .sidebar.collapsed .sb-user-info,
+        .sidebar.collapsed .sb-user-chevron { display: revert !important; }
+        .sidebar.collapsed .nav-item { justify-content: flex-start !important; padding: 9px 12px !important; }
+        .sidebar.collapsed .nav-links { padding: 14px 12px !important; }
+        .sidebar.collapsed .sb-collapse { justify-content: flex-start; padding: 12px 20px; }
+        .sidebar.collapsed .sb-user { justify-content: flex-start; padding: 14px 16px; }
+        .sidebar-toggle {
+          display: inline-flex !important;
+          flex-direction: column !important;
+          width: 42px !important;
+          height: 42px !important;
+          background: #1a2747 !important;
+          border-radius: 12px !important;
+          align-items: center !important;
+          justify-content: center !important;
+          padding: 0 !important;
+          flex-shrink: 0;
+        }
+        .sidebar-toggle span { width: 20px; height: 2px; background: #fff; margin: 2px 0; display: block; border-radius: 999px; }
+        .sidebar-overlay { display: block; }
+        .app-shell.sidebar-open .sidebar-overlay { opacity: 1; visibility: visible; }
+        .topbar { flex-wrap: nowrap !important; gap: 10px !important; align-items: center !important; margin-bottom: 16px !important; }
+        .search-bar { flex: 1 1 auto !important; min-width: 0 !important; width: auto !important; }
+        .topbar-actions { width: auto !important; justify-content: flex-end; flex-shrink: 0; }
+        .hero-card { flex-direction: column !important; align-items: stretch !important; padding: 20px !important; }
+        .availability-layout { grid-template-columns: 1fr !important; }
+        .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        .content-grid { grid-template-columns: 1fr !important; gap: 14px !important; }
+        .quick-grid { grid-template-columns: 1fr !important; }
+        .main-panel { padding: 18px 16px 20px !important; }
+      }
+      @media (max-width: 640px) {
+        .topbar {
+          display: grid !important;
+          grid-template-columns: 44px minmax(0, 1fr) auto;
+          gap: 8px !important;
+          align-items: center !important;
+          margin-bottom: 14px !important;
+        }
+        .sidebar-toggle {
+          width: 44px !important;
+          height: 44px !important;
+          border-radius: 12px !important;
+        }
+        .search-bar {
+          width: 100% !important;
+          min-width: 0 !important;
+          min-height: 44px;
+          padding: 10px !important;
+          gap: 7px !important;
+          box-sizing: border-box;
+        }
+        .search-bar input { min-width: 0; font-size: 0.82rem !important; }
+        .topbar-actions { gap: 4px !important; }
+        .main-panel { padding: 14px 12px 18px !important; }
+        .stats-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
+        .hero-card { border-radius: 18px !important; margin-bottom: 14px !important; padding: 18px !important; }
+        .hero-card h1 { font-size: 1.45rem !important; }
+        .hero-badge { align-self: flex-start; }
+        .tb-icon-btn { width: 44px !important; height: 44px !important; }
+        .quick-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+        .panel { padding: 16px 16px 18px !important; border-radius: 16px !important; }
+        .table-wrapper { overflow-x: auto !important; }
+        body { overflow-x: hidden; }
+      }
+      @media (max-width: 360px) {
+        .topbar { grid-template-rows: 44px auto; row-gap: 6px !important; }
+        .sidebar-toggle { grid-column: 1; grid-row: 1; }
+        .topbar-actions { grid-column: 3; grid-row: 1; }
+        .search-bar { grid-column: 1 / -1; grid-row: 2; }
+      }
+      /* Touch-friendly targets on coarse pointers */
+      @media (pointer: coarse) {
+        .nav-item { padding: 12px 12px !important; }
+        .quick-item, .sb-menu-item, .form-control, .btn-primary, .btn-secondary { min-height: 44px; }
+      }
     </style>
 </head>
 <body>
@@ -503,7 +574,7 @@
             $navItems = [
                 'dashboard'       => ['label' => 'Dashboard',       'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>'],
                 'vehicles'        => ['label' => 'Fleet Command',   'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>'],
-                'reservations'    => ['label' => 'Dispatch Hub',    'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>', 'badge' => 3],
+                'reservations'    => ['label' => 'Dispatch Hub',    'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>'],
                 'driver-analytics'=> ['label' => 'Driver Analytics','icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'],
                 'fuel-logs'       => ['label' => 'Fuel Monitor',    'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22V9a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v13"/><path d="M14 7v4a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2V9l-3-5-3 3z"/><line x1="3" y1="22" x2="14" y2="22"/></svg>'],
                 'cost-analytics'  => ['label' => 'Cost Analytics',  'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>'],
@@ -514,6 +585,8 @@
                 'settings'        => ['label' => 'Settings',        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'],
             ];
             foreach ($navItems as $route => $item):
+                if ($route === 'usermanagement' && empty($dashboard['isAdmin'])) continue;
+                if ($route === 'driver-analytics') continue; // Hidden per admin/staff request
                 $href = $dashboard['basePath'] . ($route === 'dashboard' ? '/dashboard' : '/' . $route);
                 $isActive = $dashboard['page'] === $route;
             ?>
@@ -544,12 +617,14 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </span>
             <div class="sb-menu">
-                <a href="{{ route('settings') }}" class="sb-menu-item">Settings</a>
+                <a href="<?= htmlspecialchars($dashboard['basePath'] . '/settings') ?>" class="sb-menu-item">Settings</a>
                 <button type="button" class="sb-menu-item danger sb-menu-logout">Log out</button>
             </div>
         </div>
 
     </aside>
+
+    <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true"></div>
 
     <main class="main-panel">
         <header class="topbar">
@@ -571,43 +646,16 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
                 </button>
                 <!-- Bell / notifications -->
-                <a class="tb-icon-btn" href="<?= route('notifications') ?>" title="Notifications">
+                <a class="tb-icon-btn" href="<?= htmlspecialchars($dashboard['basePath'] . '/notifications') ?>" title="Notifications">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                     <?php if (($dashboard['unreadNotifications'] ?? 0) > 0): ?>
                         <span class="tb-badge red" id="bellBadge"><?= $dashboard['unreadNotifications'] > 9 ? '9+' : $dashboard['unreadNotifications'] ?></span>
                     <?php endif; ?>
                 </a>
-                <!-- Mail -->
-                <button class="tb-icon-btn" title="Messages">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                    <span class="tb-badge blue">2</span>
-                </button>
-                <!-- Profile pill -->
-                <div class="profile-pill" id="profilePill">
-                    <div class="pp-avatar"><?= htmlspecialchars($dashboard['user']['initials']) ?></div>
-                    <div class="pp-info">
-                        <strong><?= htmlspecialchars($dashboard['user']['name']) ?></strong>
-                        <small><?= htmlspecialchars($dashboard['user']['title']) ?></small>
-                    </div>
-                    <span class="pp-chevron">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                    </span>
-                    <div class="pp-menu">
-                        <a href="{{ route('settings') }}" class="pp-menu-item">Settings</a>
-                        <button type="button" class="pp-menu-item danger pp-menu-logout">Log out</button>
-                    </div>
-                </div>
             </div>
         </header>
 
-        <section class="hero-card">
-            <div>
-                <p class="eyebrow">Fleet operations overview</p>
-                <h1><?= htmlspecialchars($dashboard['title']) ?></h1>
-                <p class="hero-copy">You have 12 dispatches ready, 198 vehicles active, and 3 critical alerts to review.</p>
-            </div>
-            <div class="hero-badge">Live • 24/7 Operations</div>
-        </section>
+        <h1 class="page-title"><?= htmlspecialchars($dashboard['title']) ?></h1>
 
         @include('pages.'.$dashboard['page'], ['dashboard' => $dashboard])
     </main>
@@ -638,6 +686,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // Mobile toggle
+    var overlay = document.getElementById('sidebarOverlay');
     if (mobBtn && shell) {
         mobBtn.addEventListener('click', function () { shell.classList.toggle('sidebar-open'); });
         document.addEventListener('click', function (e) {
@@ -647,18 +696,22 @@ document.addEventListener('DOMContentLoaded', function () {
             shell.classList.remove('sidebar-open');
         });
     }
+    if (overlay && shell) {
+        overlay.addEventListener('click', function () { shell.classList.remove('sidebar-open'); });
+    }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && shell) { shell.classList.remove('sidebar-open'); }
+    });
 
-    // Profile dropdown handlers
+    // Sidebar profile dropdown handlers
     var logoutForm = document.getElementById('logoutForm');
     var sbUser     = document.getElementById('sbUser');
-    var profPill   = document.getElementById('profilePill');
 
     function closeProfileMenus() {
         if (sbUser) sbUser.classList.remove('open');
-        if (profPill) profPill.classList.remove('open');
     }
 
-    [sbUser, profPill].forEach(function (el) {
+    [sbUser].forEach(function (el) {
         if (!el) return;
         el.addEventListener('click', function (e) {
             e.stopPropagation();
@@ -671,12 +724,60 @@ document.addEventListener('DOMContentLoaded', function () {
     document.addEventListener('click', closeProfileMenus);
 
     if (logoutForm) {
-        document.querySelectorAll('.pp-menu-logout, .sb-menu-logout').forEach(function (btn) {
+        document.querySelectorAll('.sb-menu-logout').forEach(function (btn) {
             btn.addEventListener('click', function (e) {
                 e.stopPropagation();
                 logoutForm.submit();
             });
         });
+    }
+
+    // Log out after seven minutes without activity across the user's open tabs.
+    if (logoutForm) {
+        var idleTimeoutMs = 7 * 60 * 1000;
+        var activityKey = 'fleetops.lastActivity';
+        var lastActivity = Number(localStorage.getItem(activityKey)) || Date.now();
+        var lastStoredActivity = lastActivity;
+        var loggingOutForIdle = false;
+
+        logoutForm.addEventListener('submit', function () {
+            localStorage.removeItem(activityKey);
+        });
+
+        function logoutForIdle() {
+            if (loggingOutForIdle) return;
+            loggingOutForIdle = true;
+            localStorage.removeItem(activityKey);
+            logoutForm.submit();
+        }
+
+        function recordActivity() {
+            var now = Date.now();
+            if (now - lastActivity >= idleTimeoutMs) {
+                logoutForIdle();
+                return;
+            }
+
+            lastActivity = now;
+            if (now - lastStoredActivity >= 1000) {
+                localStorage.setItem(activityKey, String(now));
+                lastStoredActivity = now;
+            }
+        }
+
+        ['pointerdown', 'keydown', 'touchstart', 'scroll', 'pointermove'].forEach(function (eventName) {
+            document.addEventListener(eventName, recordActivity, { passive: true });
+        });
+
+        window.addEventListener('storage', function (event) {
+            if (event.key !== activityKey || !event.newValue) return;
+            var sharedActivity = Number(event.newValue);
+            if (sharedActivity > lastActivity) lastActivity = sharedActivity;
+        });
+
+        window.setInterval(function () {
+            if (Date.now() - lastActivity >= idleTimeoutMs) logoutForIdle();
+        }, 1000);
     }
 
     // Dark mode toggle

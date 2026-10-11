@@ -3,43 +3,25 @@
 namespace App\Http\Controllers;
 
 use App\Support\Database;
+use App\Support\OpenRouteServiceGeocoder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use PDO;
 
 class ApiController
 {
-    private static string $storageFile = __DIR__ . '/../../storage/fleet_state.json';
-
     public function __construct()
     {
-        $this->ensureStorage();
+        // Uses live fleet tables (vehicles, drivers, trip_records, alerts).
     }
 
     /**
-     * Authenticate and check RBAC permissions via Session or Bearer JWT token header
+     * Authenticate with Laravel guards and check role permissions.
      */
     public function authorizeRole(array $allowedRoles = []): array
     {
-        // Check session role first
-        $userRole = $_SESSION['user_role'] ?? 'Dispatcher';
-        $userId = $_SESSION['user_id'] ?? 1;
-        $userName = $_SESSION['user_name'] ?? 'Fleet Dispatcher';
-
-        // Check Bearer JWT token in Authorization header if present
-        $headers = function_exists('getallheaders') ? getallheaders() : [];
-        $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
-        if (str_starts_with($authHeader, 'Bearer ')) {
-            $token = substr($authHeader, 7);
-            // Basic JWT decode parsing (header.payload.signature)
-            $parts = explode('.', $token);
-            if (count($parts) === 3) {
-                $payload = json_decode(base64_decode(strtr($parts[1], '-_', '+/')), true);
-                if (is_array($payload) && isset($payload['role'])) {
-                    $userRole = $payload['role'];
-                    $userId = $payload['sub'] ?? $userId;
-                    $userName = $payload['name'] ?? $userName;
-                }
-            }
-        }
+        $user = auth('sanctum')->user() ?? auth('web')->user();
+        $userRole = $user?->role ?? '';
 
         if (!empty($allowedRoles) && !in_array($userRole, $allowedRoles, true)) {
             http_response_code(403);
@@ -50,7 +32,7 @@ class ApiController
             exit;
         }
 
-        return ['id' => $userId, 'name' => $userName, 'role' => $userRole];
+        return ['id' => $user?->id, 'name' => $user?->name, 'role' => $userRole];
     }
 
     /**
@@ -58,23 +40,56 @@ class ApiController
      */
     public function getLiveVehicles(): void
     {
-        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin']);
+        $actor = $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin', 'User', 'Staff']);
         $state = $this->getFleetState();
+        $authorizedVehicleIds = null;
+
+        if ($actor['role'] !== 'Admin') {
+            $driverIds = DB::table('drivers')
+                ->where('user_id', $actor['id'])
+                ->pluck('id');
+            $dispatchVehicleIds = DB::table('dispatches')
+                ->whereIn('driver_id', $driverIds)
+                ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+                ->pluck('vehicle_id');
+            $tripVehicleIds = DB::table('trip_records')
+                ->whereIn('driver_id', $driverIds)
+                ->whereRaw('LOWER(TRIM(status)) <> ?', ['completed'])
+                ->pluck('vehicle_id');
+            $authorizedVehicleIds = $dispatchVehicleIds
+                ->merge($tripVehicleIds)
+                ->mapWithKeys(fn ($vehicleId) => [(int) $vehicleId => true])
+                ->all();
+        }
 
         $vehicles = [];
         foreach ($state['vehicles'] as $v) {
-            $trip = $this->findActiveTripForVehicle($state, $v['id']);
-            $loc = $state['locations'][$v['id']] ?? [
-                'latitude' => 14.5995,
-                'longitude' => 120.9842,
-                'speed' => 45.0,
-                'timestamp' => date('Y-m-d H:i:s'),
-            ];
+            if ($authorizedVehicleIds !== null && !isset($authorizedVehicleIds[$v['id']])) {
+                continue;
+            }
 
-            $driver = $state['drivers'][$v['id']] ?? [
-                'name' => 'Harvey Villarin',
-                'employee_id' => 'DRV-1001',
-            ];
+            $trip = $this->findActiveTripForVehicle($state, $v['id']);
+            $loc = $state['locations'][$v['id']] ?? null;
+
+            if ($loc === null && $trip) {
+                $loc = [
+                    'latitude' => $trip['origin_lat'] !== null ? (float)$trip['origin_lat'] : null,
+                    'longitude' => $trip['origin_lng'] !== null ? (float)$trip['origin_lng'] : null,
+                    'speed' => 0.0,
+                    'timestamp' => $trip['departure_time'] ?? date('Y-m-d H:i:s'),
+                ];
+            }
+            if ($loc === null) {
+                $loc = ['latitude' => null, 'longitude' => null, 'speed' => 0.0, 'timestamp' => null];
+            }
+
+            $driver = null;
+            if ($trip) {
+                $driver = $state['drivers'][$trip['driver_id']] ?? null;
+            }
+            if ($driver === null && !empty($state['drivers'])) {
+                $driver = $state['drivers'][$v['id']] ?? reset($state['drivers']);
+            }
 
             $vehicles[] = [
                 'id' => $v['id'],
@@ -83,11 +98,11 @@ class ApiController
                 'type' => $v['type'],
                 'status' => $v['status'],
                 'fuel_level' => (float)$v['fuel_level'],
-                'driver_name' => $driver['name'],
-                'employee_id' => $driver['employee_id'],
-                'latitude' => (float)$loc['latitude'],
-                'longitude' => (float)$loc['longitude'],
-                'speed' => (float)$loc['speed'],
+                'driver_name' => $driver['name'] ?? 'Unassigned',
+                'employee_id' => $driver['employee_id'] ?? '',
+                'latitude' => $loc['latitude'] !== null ? (float)$loc['latitude'] : null,
+                'longitude' => $loc['longitude'] !== null ? (float)$loc['longitude'] : null,
+                'speed' => (float)($loc['speed'] ?? 0),
                 'last_update' => $loc['timestamp'],
                 'active_trip_id' => $trip ? $trip['id'] : null,
                 'origin' => $trip ? $trip['origin'] : 'Depot Central',
@@ -110,7 +125,7 @@ class ApiController
      */
     public function getActiveTrips(): void
     {
-        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin']);
+        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin', 'User']);
         $state = $this->getFleetState();
 
         $activeTrips = [];
@@ -149,7 +164,7 @@ class ApiController
      */
     public function getTripRoute(int $tripId): void
     {
-        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin']);
+        $actor = $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin', 'User', 'Staff']);
         $state = $this->getFleetState();
 
         $trip = null;
@@ -164,20 +179,59 @@ class ApiController
             $this->jsonResponse(['success' => false, 'error' => 'Trip not found'], 404);
             return;
         }
+        if (!$this->actorCanAccessTrip($trip, $actor)) {
+            $this->jsonResponse(['success' => false, 'error' => 'Trip not found'], 404);
+            return;
+        }
 
         $v = $state['vehicles'][$trip['vehicle_id']] ?? null;
         $d = $state['drivers'][$trip['driver_id']] ?? null;
-        $loc = $state['locations'][$trip['vehicle_id']] ?? [
-            'latitude' => $trip['origin_lat'],
-            'longitude' => $trip['origin_lng'],
-            'speed' => 45.0,
-            'fuel_level' => 85.0
-        ];
+        $loc = $state['locations'][$trip['vehicle_id']] ?? null;
 
-        // Generate turn-by-turn geometry polylines from origin through current position to destination
-        $waypoints = $this->generateRouteWaypoints($trip, $loc);
+        // Geocode missing origin/destination coordinates and persist them.
+        $coords = $this->ensureTripCoordinates($trip);
+        if ($coords === null) {
+            $this->jsonResponse([
+                'success' => false,
+                'error' => 'Unable to geocode the trip origin or destination. Check the application log for the failed location.',
+            ], 400);
+            return;
+        }
+        $trip = array_merge($trip, $coords);
+
+        if ($loc === null) {
+            $loc = [
+                'latitude' => (float)$trip['origin_lat'],
+                'longitude' => (float)$trip['origin_lng'],
+                'speed' => 0.0,
+                'fuel_level' => (float)($v['fuel_level'] ?? 0),
+            ];
+        }
+
+        // Keep route geometry independent of live GPS; ETA is loaded separately.
         $routeColor = $this->calculateRouteColor($trip, (float)$loc['speed']);
-        $eta = $this->computeEtaDetails($trip, $loc);
+        $originLocation = [
+            'latitude' => (float)$trip['origin_lat'],
+            'longitude' => (float)$trip['origin_lng'],
+            'speed' => 0.0,
+        ];
+        $waypoints = [];
+        $alternativeRoutes = [];
+        try {
+            $dispatchRouteResponse = $this->requestOpenRouteServiceRouteForTrip($trip, null);
+            $waypoints = $this->generateRouteWaypoints($trip, $originLocation, $dispatchRouteResponse);
+            $alternativeRoutes = $this->buildAlternativeRoutes(
+                $dispatchRouteResponse,
+                $trip,
+                $originLocation,
+                $waypoints
+            );
+        } catch (\Throwable $exception) {
+            Log::warning('Unable to generate TripRecord A-to-B route.', [
+                'trip_record_id' => $trip['id'],
+                'exception' => $exception->getMessage(),
+            ]);
+        }
 
         $trafficDelays = [];
         if ($routeColor === 'yellow') {
@@ -213,8 +267,9 @@ class ApiController
                 'status' => $trip['status'],
                 'route_color' => $routeColor, // green, yellow, red
                 'waypoints' => $waypoints,
+                'routes' => $alternativeRoutes,
                 'traffic_delays' => $trafficDelays,
-                'eta' => $eta,
+                'eta' => null,
             ],
         ]);
     }
@@ -224,7 +279,7 @@ class ApiController
      */
     public function getTripEta(int $tripId): void
     {
-        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin']);
+        $actor = $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin', 'User', 'Staff']);
         $state = $this->getFleetState();
 
         $trip = null;
@@ -239,8 +294,18 @@ class ApiController
             $this->jsonResponse(['success' => false, 'error' => 'Trip not found'], 404);
             return;
         }
+        if (!$this->actorCanAccessTrip($trip, $actor)) {
+            $this->jsonResponse(['success' => false, 'error' => 'Trip not found'], 404);
+            return;
+        }
 
         $loc = $state['locations'][$trip['vehicle_id']] ?? null;
+        $coords = $this->ensureTripCoordinates($trip);
+        if ($coords === null) {
+            $this->jsonResponse(['success' => false, 'error' => 'Unable to derive trip origin/destination coordinates.'], 400);
+            return;
+        }
+        $trip = array_merge($trip, $coords);
         $eta = $this->computeEtaDetails($trip, $loc);
 
         $this->jsonResponse([
@@ -256,84 +321,185 @@ class ApiController
      */
     public function startTrip(): void
     {
-        $this->authorizeRole(['Driver', 'Dispatcher', 'Admin']);
+        $actor = $this->authorizeRole(['Driver', 'User', 'Dispatcher', 'Admin']);
         $raw = file_get_contents('php://input');
         $data = json_decode($raw, true) ?: $_POST;
 
-        $vehicleId = (int)($data['vehicle_id'] ?? 1);
-        $origin = $data['origin'] ?? 'Depot Terminal, Manila';
-        $destination = $data['destination'] ?? 'Quezon City Logistics Hub';
-        $originLat = (float)($data['origin_lat'] ?? 14.5995);
-        $originLng = (float)($data['origin_lng'] ?? 120.9842);
-        $destLat = (float)($data['dest_lat'] ?? 14.6500);
-        $destLng = (float)($data['dest_lng'] ?? 121.0300);
+        $vehicleId = (int)($data['vehicle_id'] ?? 0);
+        $origin = $data['origin'] ?? null;
+        $destination = $data['destination'] ?? null;
+        $originLat = isset($data['origin_lat']) ? (float)$data['origin_lat'] : null;
+        $originLng = isset($data['origin_lng']) ? (float)$data['origin_lng'] : null;
+        $destLat = isset($data['dest_lat']) ? (float)$data['dest_lat'] : null;
+        $destLng = isset($data['dest_lng']) ? (float)$data['dest_lng'] : null;
+        $driverId = isset($data['driver_id']) ? (int)$data['driver_id'] : 0;
 
-        $state = $this->getFleetState();
-
-        // 1. Mark vehicle as Active
-        if (isset($state['vehicles'][$vehicleId])) {
-            $state['vehicles'][$vehicleId]['status'] = 'Active';
-        }
-
-        // 2. Set current initial GPS position
-        $now = date('Y-m-d H:i:s');
-        $state['locations'][$vehicleId] = [
-            'latitude' => $originLat,
-            'longitude' => $originLng,
-            'speed' => 0.0,
-            'timestamp' => $now,
-        ];
-
-        // 3. Create or activate trip
-        $newTripId = time();
-        $newTrip = [
-            'id' => $newTripId,
-            'vehicle_id' => $vehicleId,
-            'driver_id' => $vehicleId,
-            'origin' => $origin,
-            'destination' => $destination,
-            'origin_lat' => $originLat,
-            'origin_lng' => $originLng,
-            'dest_lat' => $destLat,
-            'dest_lng' => $destLng,
-            'departure_time' => $now,
-            'estimated_arrival' => date('Y-m-d H:i:s', strtotime('+45 mins')),
-            'actual_arrival' => null,
-            'total_distance' => round($this->haversineDistance($originLat, $originLng, $destLat, $destLng), 2),
-            'total_duration' => 45,
-            'fuel_consumption' => 0.0,
-            'status' => 'Active',
-        ];
-
-        // Close any old active trip for this vehicle
-        foreach ($state['trips'] as &$t) {
-            if ($t['vehicle_id'] === $vehicleId && $t['status'] !== 'Completed') {
-                $t['status'] = 'Completed';
-                $t['actual_arrival'] = $now;
+        $driverBoundActor = in_array($actor['role'], ['Driver', 'User'], true);
+        if ($driverBoundActor) {
+            $accountDriverId = (int)DB::table('drivers')->where('user_id', $actor['id'])->value('id');
+            if (!$accountDriverId || ($driverId && $driverId !== $accountDriverId)) {
+                $this->jsonResponse(['success' => false, 'error' => 'Driver account does not match the requested trip.'], 403);
+                return;
             }
+            $driverId = $accountDriverId;
         }
-        unset($t);
 
-        $state['trips'][] = $newTrip;
+        $vehicle = $vehicleId ? DB::table('vehicles')->where('id', $vehicleId)->first() : null;
+        if (!$vehicle) {
+            $this->jsonResponse(['success' => false, 'error' => 'Vehicle not found.'], 404);
+            return;
+        }
+        if (!$driverId) {
+            $latestTrip = DB::table('trip_records')->where('vehicle_id', $vehicleId)->orderByDesc('id')->first();
+            $driverId = $latestTrip->driver_id ?? 0;
+        }
+        $driver = $driverId ? DB::table('drivers')->where('id', $driverId)->first() : null;
+        if (!$driver) {
+            $this->jsonResponse(['success' => false, 'error' => 'Driver not found for this vehicle.'], 422);
+            return;
+        }
 
-        // 4. Add alert notification
-        $vCode = $state['vehicles'][$vehicleId]['vehicle_code'] ?? "TRK-{$vehicleId}";
-        $state['notifications'][] = [
-            'id' => time() . rand(100, 999),
-            'trip_id' => $newTripId,
-            'vehicle_id' => $vehicleId,
-            'type' => 'Trip started',
-            'message' => "Driver started trip for Vehicle #{$vCode} heading to {$destination}.",
-            'severity' => 'info',
-            'created_at' => $now,
-        ];
+        $activeDispatch = DB::table('dispatches')
+            ->where('vehicle_id', $vehicleId)
+            ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+            ->orderByDesc('id')
+            ->first();
+        $existingVehicleTrip = DB::table('trip_records')
+            ->where('vehicle_id', $vehicleId)
+            ->whereRaw('LOWER(TRIM(status)) <> ?', ['completed'])
+            ->orderByDesc('id')
+            ->first();
+        if ($driverBoundActor && $activeDispatch && (int)$activeDispatch->driver_id !== $driverId) {
+            $this->jsonResponse(['success' => false, 'error' => 'Vehicle is assigned to a different driver.'], 403);
+            return;
+        }
+        if ($actor['role'] === 'User' && $existingVehicleTrip && (int)$existingVehicleTrip->driver_id !== $driverId) {
+            $this->jsonResponse(['success' => false, 'error' => 'Vehicle is assigned to a different driver.'], 403);
+            return;
+        }
 
-        $this->saveFleetState($state);
+        $ownsActiveDispatch = $activeDispatch && (int)$activeDispatch->driver_id === $driverId;
+        $ownsExistingTrip = $existingVehicleTrip && (int)$existingVehicleTrip->driver_id === $driverId;
+        if ($actor['role'] === 'User' && !$ownsActiveDispatch && !$ownsExistingTrip) {
+            $this->jsonResponse(['success' => false, 'error' => 'No active dispatch or trip is assigned to this driver account.'], 403);
+            return;
+        }
+
+        $dispatchId = $ownsActiveDispatch
+            ? (int)$activeDispatch->id
+            : null;
+        $existingTrip = null;
+        if ($dispatchId !== null) {
+            $existingTrip = DB::table('trip_records')
+                ->where('dispatch_id', $dispatchId)
+                ->whereRaw('LOWER(TRIM(status)) <> ?', ['completed'])
+                ->orderByDesc('id')
+                ->first();
+        }
+        if ($actor['role'] === 'User' && !$existingTrip && $ownsExistingTrip) {
+            $existingTrip = $existingVehicleTrip;
+        }
+        if ($existingTrip) {
+            $this->jsonResponse([
+                'success' => true,
+                'message' => 'Tracking continued for the active dispatch or trip.',
+                'trip' => (array)$existingTrip,
+                'tracking_interval_seconds' => 5,
+            ]);
+            return;
+        }
+
+        if (!$origin || !$destination) {
+            $this->jsonResponse(['success' => false, 'error' => 'Origin and destination are required.'], 422);
+            return;
+        }
+
+        // Geocode free-text addresses when the client did not provide coordinates.
+        if ($originLat === null || $originLng === null) {
+            $geo = $this->geocodeAddress((string)$origin);
+            $originLat = $geo['lat'] ?? null;
+            $originLng = $geo['lng'] ?? null;
+        }
+        if ($destLat === null || $destLng === null) {
+            $geo = $this->geocodeAddress((string)$destination);
+            $destLat = $geo['lat'] ?? null;
+            $destLng = $geo['lng'] ?? null;
+        }
+
+      if ($originLat === null || $originLng === null || $destLat === null || $destLng === null) {
+    $this->jsonResponse([
+        'success' => false,
+        'error' => 'Unable to determine coordinates for the trip origin or destination. Please check the addresses and try again.',
+    ], 422);
+    return;
+}
+
+        $now = date('Y-m-d H:i:s');
+
+        $tripId = DB::transaction(function () use ($vehicleId, $driverId, $dispatchId, $origin, $destination, $originLat, $originLng, $destLat, $destLng, $now, $vehicle) {
+            DB::table('vehicles')->where('id', $vehicleId)->update(['status' => 'Active', 'updated_at' => $now]);
+
+            DB::table('location_logs')->insert([
+                'vehicle_id' => $vehicleId,
+                'latitude' => $originLat ?? 0,
+                'longitude' => $originLng ?? 0,
+                'speed' => 0.0,
+                'timestamp' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            // Close any old active trip for this vehicle.
+            DB::table('trip_records')
+                ->where('vehicle_id', $vehicleId)
+                ->where('status', '!=', 'Completed')
+                ->update(['status' => 'Completed', 'actual_arrival' => $now, 'updated_at' => $now]);
+
+            $tripId = DB::table('trip_records')->insertGetId([
+                'dispatch_id' => $dispatchId,
+                'vehicle_id' => $vehicleId,
+                'driver_id' => $driverId,
+                'origin' => $origin,
+                'destination' => $destination,
+                'origin_lat' => $originLat,
+                'origin_lng' => $originLng,
+                'dest_lat' => $destLat,
+                'dest_lng' => $destLng,
+                'departure_time' => $now,
+                'estimated_arrival' => null,
+                'actual_arrival' => null,
+                'total_distance' => ($originLat !== null && $destLat !== null)
+                    ? round($this->haversineDistance((float)$originLat, (float)$originLng, (float)$destLat, (float)$destLng), 2)
+                    : 0,
+                'total_duration' => 0,
+                'fuel_consumption' => 0,
+                'status' => 'Active',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            DB::table('alerts')->insert([
+                'vehicle_id' => $vehicleId,
+                'trip_record_id' => $tripId,
+                'type' => 'Trip started',
+                'title' => 'Trip started',
+                'message' => "Driver started a trip for Vehicle #{$vehicle->vehicle_code} heading to {$destination}.",
+                'detail' => "Driver started a trip for Vehicle #{$vehicle->vehicle_code} heading to {$destination}.",
+                'icon' => '🚚',
+                'severity' => 'info',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            return $tripId;
+        });
+
+        $trip = DB::table('trip_records')->where('id', $tripId)->first();
 
         $this->jsonResponse([
             'success' => true,
-            'message' => "Trip started successfully for Vehicle #{$vCode}.",
-            'trip' => $newTrip,
+            'message' => "Trip started successfully for Vehicle #{$vehicle->vehicle_code}.",
+            'trip' => (array) $trip,
             'tracking_interval_seconds' => 5,
         ]);
     }
@@ -344,119 +510,162 @@ class ApiController
     public function updateLocation(): void
 
     {
-        $this->authorizeRole(['Driver', 'Dispatcher', 'Admin']);
+        $actor = $this->authorizeRole(['Driver', 'User', 'Dispatcher', 'Admin']);
         $raw = file_get_contents('php://input');
         $data = json_decode($raw, true) ?: $_POST;
 
-        $vehicleId = (int)($data['vehicle_id'] ?? 1);
-        $latitude = (float)($data['latitude'] ?? 14.5995);
-        $longitude = (float)($data['longitude'] ?? 120.9842);
-        $speed = isset($data['speed']) ? (float)$data['speed'] : 45.0;
+        $vehicleId = (int)($data['vehicle_id'] ?? 0);
+        $latitude = isset($data['latitude']) ? (float)$data['latitude'] : null;
+        $longitude = isset($data['longitude']) ? (float)$data['longitude'] : null;
+        $speed = isset($data['speed']) ? (float)$data['speed'] : 0.0;
         $fuelLevel = isset($data['fuel_level']) ? (float)$data['fuel_level'] : null;
+        $vehicle = $vehicleId ? DB::table('vehicles')->where('id', $vehicleId)->first() : null;
 
-        $state = $this->getFleetState();
+        if (!$vehicle || $latitude === null || $longitude === null) {
+            $this->jsonResponse(['success' => false, 'error' => 'Vehicle and coordinates are required.'], 422);
+            return;
+        }
 
-        // Update location record
+        $tripModel = DB::table('trip_records')
+            ->where('vehicle_id', $vehicleId)
+            ->whereRaw('LOWER(TRIM(status)) <> ?', ['completed'])
+            ->orderByDesc('id')
+            ->first();
+
+        $activeDispatch = DB::table('dispatches')
+            ->where('vehicle_id', $vehicleId)
+            ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+            ->orderByDesc('id')
+            ->first();
+
+        if (in_array($actor['role'], ['Driver', 'User'], true)) {
+            $accountDriverId = (int)DB::table('drivers')->where('user_id', $actor['id'])->value('id');
+            $ownsTrip = $tripModel && (int)$tripModel->driver_id === $accountDriverId;
+            $ownsDispatch = $activeDispatch && (int)$activeDispatch->driver_id === $accountDriverId;
+            if (!$accountDriverId ||
+                ($tripModel && (int)$tripModel->driver_id !== $accountDriverId) ||
+                ($activeDispatch && (int)$activeDispatch->driver_id !== $accountDriverId) ||
+                ($actor['role'] === 'User' && !$ownsTrip && !$ownsDispatch)) {
+                $this->jsonResponse(['success' => false, 'error' => 'Vehicle is not assigned to this driver account.'], 403);
+                return;
+            }
+        }
+
+        $now = date('Y-m-d H:i:s');
+
         $locRecord = [
             'latitude' => $latitude,
             'longitude' => $longitude,
             'speed' => $speed,
-            'timestamp' => date('Y-m-d H:i:s'),
+            'timestamp' => $now,
         ];
         if ($fuelLevel !== null) {
             $locRecord['fuel_level'] = $fuelLevel;
-            if (isset($state['vehicles'][$vehicleId])) {
-                $state['vehicles'][$vehicleId]['fuel_level'] = $fuelLevel;
-            }
         }
-        $state['locations'][$vehicleId] = $locRecord;
 
-        $trip = $this->findActiveTripForVehicle($state, $vehicleId);
+        DB::table('location_logs')->insert([
+            'vehicle_id' => $vehicleId,
+            'latitude' => $latitude,
+            'longitude' => $longitude,
+            'speed' => $speed,
+            'fuel_level' => $fuelLevel,
+            'timestamp' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        if ($fuelLevel !== null) {
+            DB::table('vehicles')->where('id', $vehicleId)->update(['fuel_level' => $fuelLevel, 'updated_at' => $now]);
+        }
+
+        $trip = $tripModel ? (array) $tripModel : null;
         $notificationsCreated = [];
         $arrivalDetected = false;
+
+        $addAlert = function (string $type, string $message, string $severity) use ($vehicleId, $trip, $vehicle, $now, &$notificationsCreated) {
+            $alertId = DB::table('alerts')->insertGetId([
+                'vehicle_id' => $vehicleId,
+                'trip_record_id' => $trip['id'] ?? null,
+                'type' => $type,
+                'title' => $type,
+                'message' => $message,
+                'detail' => $message,
+                'icon' => $severity === 'warning' ? '⚠️' : 'ℹ️',
+                'severity' => $severity,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+            $notificationsCreated[] = [
+                'id' => $alertId,
+                'trip_id' => $trip['id'] ?? null,
+                'vehicle_id' => $vehicleId,
+                'type' => $type,
+                'message' => $message,
+                'severity' => $severity,
+                'created_at' => $now,
+            ];
+        };
 
         if ($trip) {
             $tripId = $trip['id'];
 
-            // 1. Calculate distance to destination in kilometers
-            $distToDestKm = $this->haversineDistance($latitude, $longitude, (float)$trip['dest_lat'], (float)$trip['dest_lng']);
+            // Ensure destination coordinates exist so arrival monitoring works.
+            $trip = array_merge($trip, $this->ensureTripCoordinates($trip) ?? []);
+            $destLat = $trip['dest_lat'] !== null ? (float)$trip['dest_lat'] : null;
+            $destLng = $trip['dest_lng'] !== null ? (float)$trip['dest_lng'] : null;
 
-            // 2. Arrival Monitoring: detect if reached destination (< 50 meters = 0.05 km)
-            if ($distToDestKm <= 0.05 && $trip['status'] !== 'Completed') {
-                $arrivalDetected = true;
-                $now = date('Y-m-d H:i:s');
-                
-                // Calculate elapsed duration in minutes
-                $startTime = strtotime($trip['departure_time']);
-                $durationMins = max(1, (int)round((time() - $startTime) / 60));
-                $totalDist = (float)($trip['total_distance'] ?: round($this->haversineDistance((float)$trip['origin_lat'], (float)$trip['origin_lng'], (float)$trip['dest_lat'], (float)$trip['dest_lng']), 2));
-                $fuelUsed = round($totalDist * 0.28, 2); // Average 0.28 L / km for heavy cargo truck
+            if ($destLat !== null && $destLng !== null) {
+                // 1. Calculate distance to destination in kilometers
+                $distToDestKm = $this->haversineDistance($latitude, $longitude, $destLat, $destLng);
 
-                // Mark trip as Completed
-                foreach ($state['trips'] as &$tItem) {
-                    if ($tItem['id'] === $tripId) {
-                        $tItem['status'] = 'Completed';
-                        $tItem['actual_arrival'] = $now;
-                        $tItem['total_distance'] = $totalDist;
-                        $tItem['total_duration'] = $durationMins;
-                        $tItem['fuel_consumption'] = $fuelUsed;
-                        break;
+                // 2. Arrival Monitoring: detect if reached destination (< 50 meters = 0.05 km)
+                if ($distToDestKm <= 0.05 && $trip['status'] !== 'Completed') {
+                    $arrivalDetected = true;
+
+                    $startTime = $trip['departure_time'] ? strtotime((string)$trip['departure_time']) : time();
+                    $durationMins = max(1, (int)round((time() - $startTime) / 60));
+                    $totalDist = (float)($trip['total_distance'] ?: round($this->haversineDistance((float)$trip['origin_lat'], (float)$trip['origin_lng'], $destLat, $destLng), 2));
+                    $fuelUsed = round($totalDist * 0.28, 2); // Average 0.28 L / km for heavy cargo truck
+
+                    DB::table('trip_records')->where('id', $tripId)->update([
+                        'status' => 'Completed',
+                        'actual_arrival' => $now,
+                        'total_distance' => $totalDist,
+                        'total_duration' => $durationMins,
+                        'fuel_consumption' => $fuelUsed,
+                        'updated_at' => $now,
+                    ]);
+
+                    // Complete the dispatch linked to this trip, if any.
+                    if (!empty($trip['dispatch_id'])) {
+                        DB::table('dispatches')->where('id', $trip['dispatch_id'])->update(['status' => 'Completed', 'updated_at' => $now]);
+                    }
+
+                    DB::table('vehicles')->where('id', $vehicleId)->update(['status' => 'Active', 'updated_at' => $now]);
+
+                    $addAlert('Vehicle arrived', "Vehicle #{$vehicle->vehicle_code} has arrived safely at {$trip['destination']}.", 'info');
+                } else {
+                    // Check Route Deviation (> 3 KM off straight path)
+                    if ($trip['origin_lat'] !== null && $trip['origin_lng'] !== null) {
+                        $originDist = $this->haversineDistance((float)$trip['origin_lat'], (float)$trip['origin_lng'], $latitude, $longitude);
+                        $directDist = $this->haversineDistance((float)$trip['origin_lat'], (float)$trip['origin_lng'], $destLat, $destLng);
+                        if ($originDist > ($directDist + 3.0)) {
+                            $addAlert('Route deviation', "Route deviation detected for Vehicle #{$vehicle->vehicle_code} on trip to {$trip['destination']}.", 'warning');
+                        }
+                    }
+
+                    // Check Excessive Idle Time (speed = 0)
+                    if ($speed == 0) {
+                        $addAlert('Excessive idle time', "Excessive idle time logged for Vehicle #{$vehicle->vehicle_code} (Stationary at GPS location).", 'warning');
                     }
                 }
-                unset($tItem);
-
-                // Update vehicle status to Idle
-                if (isset($state['vehicles'][$vehicleId])) {
-                    $state['vehicles'][$vehicleId]['status'] = 'Idle';
-                }
-
-                $notif = [
-                    'id' => time() . rand(100, 999),
-                    'trip_id' => $tripId,
-                    'vehicle_id' => $vehicleId,
-                    'type' => 'Vehicle arrived',
-                    'message' => "Vehicle #{$state['vehicles'][$vehicleId]['vehicle_code']} has arrived safely at {$trip['destination']}.",
-                    'severity' => 'info',
-                    'created_at' => date('Y-m-d H:i:s'),
-                ];
-                $state['notifications'][] = $notif;
-                $notificationsCreated[] = $notif;
             } else {
-                // Check Route Deviation (> 3 KM off straight path)
-                $originDist = $this->haversineDistance((float)$trip['origin_lat'], (float)$trip['origin_lng'], $latitude, $longitude);
-                $directDist = $this->haversineDistance((float)$trip['origin_lat'], (float)$trip['origin_lng'], (float)$trip['dest_lat'], (float)$trip['dest_lng']);
-                if ($originDist > ($directDist + 3.0)) {
-                    $notif = [
-                        'id' => time() . rand(100, 999),
-                        'trip_id' => $tripId,
-                        'vehicle_id' => $vehicleId,
-                        'type' => 'Route deviation',
-                        'message' => "Route deviation detected for Vehicle #{$state['vehicles'][$vehicleId]['vehicle_code']} on trip to {$trip['destination']}.",
-                        'severity' => 'warning',
-                        'created_at' => date('Y-m-d H:i:s'),
-                    ];
-                    $state['notifications'][] = $notif;
-                    $notificationsCreated[] = $notif;
-                }
-
-                // Check Excessive Idle Time (speed = 0)
+                // Check Excessive Idle Time even when coordinates are unavailable.
                 if ($speed == 0) {
-                    $notif = [
-                        'id' => time() . rand(100, 999),
-                        'trip_id' => $tripId,
-                        'vehicle_id' => $vehicleId,
-                        'type' => 'Excessive idle time',
-                        'message' => "Excessive idle time logged for Vehicle #{$state['vehicles'][$vehicleId]['vehicle_code']} (Stationary at GPS location).",
-                        'severity' => 'warning',
-                        'created_at' => date('Y-m-d H:i:s'),
-                    ];
-                    $state['notifications'][] = $notif;
-                    $notificationsCreated[] = $notif;
+                    $addAlert('Excessive idle time', "Excessive idle time logged for Vehicle #{$vehicle->vehicle_code} (Stationary at GPS location).", 'warning');
                 }
             }
         }
-
-        $this->saveFleetState($state);
 
         $this->jsonResponse([
             'success' => true,
@@ -475,31 +684,38 @@ class ApiController
      */
     public function getDashboardAnalytics(): void
     {
-        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin']);
-        $state = $this->getFleetState();
+        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin', 'User']);
 
+        $today = date('Y-m-d');
         $activeTrips = 0;
         $completedTrips = 0;
         $delayedTrips = 0;
         $totalDist = 0.0;
         $totalFuel = 0.0;
 
-        foreach ($state['trips'] as $t) {
-            if ($t['status'] === 'Completed') {
+        $trips = DB::table('trip_records')->get();
+        foreach ($trips as $t) {
+            if (in_array(strtolower((string)$t->status), ['completed'], true)) {
                 $completedTrips++;
-                $totalDist += (float)($t['total_distance'] ?? 45.0);
-                $totalFuel += (float)($t['fuel_consumption'] ?? 12.6);
-            } elseif ($t['status'] === 'Active') {
+                $completedDate = $t->actual_arrival ? substr((string)$t->actual_arrival, 0, 10) : null;
+                if ($completedDate === $today) {
+                    $totalDist += (float)($t->total_distance ?? 0);
+                    $totalFuel += (float)($t->fuel_consumption ?? 0);
+                }
+            } elseif (strtolower((string)$t->status) === 'delayed' || strtolower((string)$t->status) === 'critical delay') {
                 $activeTrips++;
-                $loc = $state['locations'][$t['vehicle_id']] ?? null;
-                $speed = $loc ? (float)$loc['speed'] : 30.0;
-                $color = $this->calculateRouteColor($t, $speed);
+                $delayedTrips++;
+            } else {
+                $activeTrips++;
+                $loc = DB::table('location_logs')
+                    ->where('vehicle_id', $t->vehicle_id)
+                    ->orderByDesc('timestamp')
+                    ->first();
+                $speed = $loc ? (float)$loc->speed : 30.0;
+                $color = $this->calculateRouteColor(['status' => $t->status], $speed);
                 if ($color === 'yellow' || $color === 'red') {
                     $delayedTrips++;
                 }
-            } elseif ($t['status'] === 'Delayed' || $t['status'] === 'Critical Delay') {
-                $activeTrips++;
-                $delayedTrips++;
             }
         }
 
@@ -507,11 +723,11 @@ class ApiController
             'success' => true,
             'analytics' => [
                 'active_trips' => $activeTrips,
-                'completed_trips' => $completedTrips + 18, // Seed baseline
+                'completed_trips' => $completedTrips,
                 'delayed_trips' => $delayedTrips,
-                'avg_eta_accuracy' => 97.4, // %
-                'total_distance_today_km' => round($totalDist + 312.5, 1),
-                'total_fuel_consumption_l' => round($totalFuel + 88.4, 1),
+                'avg_eta_accuracy' => 0.0,
+                'total_distance_today_km' => round($totalDist, 1),
+                'total_fuel_consumption_l' => round($totalFuel, 1),
             ]
         ]);
     }
@@ -521,7 +737,7 @@ class ApiController
      */
     public function getNotifications(): void
     {
-        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin']);
+        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin', 'User']);
         $state = $this->getFleetState();
 
         $this->jsonResponse([
@@ -592,17 +808,16 @@ class ApiController
     }
 
     // Helper utilities
-    private function computeEtaDetails(array $trip, ?array $loc): array
+    private function computeEtaDetails(array $trip, ?array $loc, ?array $routeResponse = null): array
     {
-        $curLat = $loc ? (float)$loc['latitude'] : (float)$trip['origin_lat'];
-        $curLng = $loc ? (float)$loc['longitude'] : (float)$trip['origin_lng'];
-        $speed = ($loc && (float)$loc['speed'] > 0) ? (float)$loc['speed'] : 40.0;
+        $routeResponse = $routeResponse ?? $this->requestOpenRouteServiceRouteForTrip($trip, $loc);
+        $summary = $this->getOpenRouteServiceSummary($routeResponse);
+        if (!is_array($summary) || !is_numeric($summary['distance'] ?? null) || !is_numeric($summary['duration'] ?? null)) {
+            throw new \RuntimeException('OpenRouteService response contains no valid route distance and duration.');
+        }
 
-        $remainingDistKm = round($this->haversineDistance($curLat, $curLng, (float)$trip['dest_lat'], (float)$trip['dest_lng']), 1);
-        
-        // Duration in hours & minutes
-        $timeHours = $remainingDistKm / max(10, $speed);
-        $timeMins = (int)round($timeHours * 60);
+        $remainingDistKm = round((float)$summary['distance'] / 1000, 1);
+        $timeMins = (int)round((float)$summary['duration'] / 60);
 
         $expectedArrivalTs = time() + ($timeMins * 60);
 
@@ -635,23 +850,266 @@ class ApiController
         return 'green';
     }
 
-    private function generateRouteWaypoints(array $trip, array $loc): array
+    private function requestOpenRouteServiceRouteForTrip(array $trip, ?array $loc): array
     {
-        $oLat = (float)$trip['origin_lat'];
-        $oLng = (float)$trip['origin_lng'];
-        $cLat = (float)$loc['latitude'];
-        $cLng = (float)$loc['longitude'];
-        $dLat = (float)$trip['dest_lat'];
-        $dLng = (float)$trip['dest_lng'];
+        $currentLat = $loc['latitude'] ?? null;
+        $currentLng = $loc['longitude'] ?? null;
+        $hasValidCurrentLocation = is_numeric($currentLat) && is_numeric($currentLng) &&
+            (float)$currentLat >= -90 && (float)$currentLat <= 90 &&
+            (float)$currentLng >= -180 && (float)$currentLng <= 180;
 
-        // Build turn-by-turn road polyline points
-        return [
-            ['lat' => $oLat, 'lng' => $oLng, 'label' => 'Origin: ' . $trip['origin']],
-            ['lat' => $oLat + ($cLat - $oLat) * 0.5, 'lng' => $oLng + ($cLng - $oLng) * 0.4, 'label' => 'Expressway Ramp'],
-            ['lat' => $cLat, 'lng' => $cLng, 'label' => 'Current GPS Position'],
-            ['lat' => $cLat + ($dLat - $cLat) * 0.5, 'lng' => $cLng + ($dLng - $cLng) * 0.6, 'label' => 'Avenue Junction'],
-            ['lat' => $dLat, 'lng' => $dLng, 'label' => 'Destination: ' . $trip['destination']],
-        ];
+        return $this->requestOpenRouteServiceRoute(
+            $hasValidCurrentLocation ? (float)$currentLat : (float)$trip['origin_lat'],
+            $hasValidCurrentLocation ? (float)$currentLng : (float)$trip['origin_lng'],
+            (float)$trip['dest_lat'],
+            (float)$trip['dest_lng']
+        );
+    }
+
+    private function getOpenRouteServiceSummary(array $response): ?array
+    {
+        $routes = $response['routes'] ?? null;
+        if (is_array($routes) && isset($routes[0]) && is_array($routes[0])) {
+            $summary = $routes[0]['summary'] ?? null;
+            if (is_array($summary)) {
+                return $summary;
+            }
+        }
+
+        $features = $response['features'] ?? null;
+        if (is_array($features) && isset($features[0]) && is_array($features[0])) {
+            $properties = $features[0]['properties'] ?? null;
+            if (is_array($properties) && is_array($properties['summary'] ?? null)) {
+                return $properties['summary'];
+            }
+        }
+
+        return null;
+    }
+
+    private function formatRouteTravelTime(int $timeMins): string
+    {
+        $hours = intdiv($timeMins, 60);
+        $minutes = $timeMins % 60;
+
+        if ($hours > 0) {
+            return "{$hours} hr" . ($minutes > 0 ? " {$minutes} mins" : '');
+        }
+
+        return "{$timeMins} mins";
+    }
+
+    private function requestOpenRouteServiceRoute(float $startLat, float $startLng, float $destLat, float $destLng): array
+    {
+        $apiKey = getenv('OPENROUTESERVICE_API_KEY');
+        if ($apiKey === false || trim($apiKey) === '') {
+            throw new \RuntimeException('OpenRouteService API key is missing (OPENROUTESERVICE_API_KEY).');
+        }
+
+        if (!function_exists('curl_init')) {
+            throw new \RuntimeException('OpenRouteService routing requires the PHP cURL extension.');
+        }
+
+        $requestBody = json_encode([
+            'coordinates' => [
+                [$startLng, $startLat],
+                [$destLng, $destLat],
+            ],
+            'alternative_routes' => [
+                'target_count' => 3,
+            ],
+        ]);
+        if ($requestBody === false) {
+            throw new \RuntimeException('Unable to encode the OpenRouteService routing request.');
+        }
+
+        $curl = curl_init('https://api.heigit.org/openrouteservice/v2/directions/driving-car');
+        if ($curl === false) {
+            throw new \RuntimeException('Unable to initialize the OpenRouteService HTTP request.');
+        }
+
+        curl_setopt_array($curl, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $requestBody,
+            CURLOPT_HTTPHEADER => [
+                'Authorization: ' . $apiKey,
+                'Content-Type: application/json',
+                'Accept: application/json',
+            ],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => 30,
+        ]);
+
+        $responseBody = curl_exec($curl);
+        $curlError = curl_error($curl);
+        $httpStatus = (int)curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        curl_close($curl);
+
+        if ($responseBody === false) {
+            throw new \RuntimeException('OpenRouteService HTTP request failed: ' . $curlError);
+        }
+
+        $response = json_decode($responseBody, true);
+        if ($httpStatus < 200 || $httpStatus >= 300) {
+            $apiError = is_array($response)
+                ? ($response['error']['message'] ?? $response['message'] ?? 'No details provided.')
+                : 'No details provided.';
+            throw new \RuntimeException("OpenRouteService returned HTTP {$httpStatus}: {$apiError}");
+        }
+
+        if (!is_array($response)) {
+            throw new \RuntimeException('OpenRouteService returned an invalid JSON response.');
+        }
+
+        if (isset($response['error'])) {
+            $apiError = $response['error']['message'] ?? $response['message'] ?? 'No details provided.';
+            throw new \RuntimeException('OpenRouteService returned an API error: ' . $apiError);
+        }
+
+        return $response;
+    }
+
+    private function generateRouteWaypoints(array $trip, array $loc, ?array $routeResponse = null): array
+    {
+        $routeResponse = $routeResponse ?? $this->requestOpenRouteServiceRouteForTrip($trip, $loc);
+        $coordinates = null;
+        $features = $routeResponse['features'] ?? null;
+        $feature = is_array($features) ? ($features[0] ?? null) : null;
+        if (is_array($feature) && is_array($feature['geometry'] ?? null)) {
+            $coordinates = $feature['geometry']['coordinates'] ?? null;
+        }
+
+        $routes = $routeResponse['routes'] ?? null;
+        $primaryRoute = is_array($routes) ? ($routes[0] ?? null) : null;
+        $encodedGeometry = is_array($primaryRoute) ? ($primaryRoute['geometry'] ?? null) : null;
+        if (is_string($encodedGeometry) && $encodedGeometry !== '') {
+            $coordinates = [];
+            $index = 0;
+            $latitude = 0;
+            $longitude = 0;
+            $encodedLength = strlen($encodedGeometry);
+
+            while ($index < $encodedLength) {
+                $deltas = [];
+                for ($axis = 0; $axis < 2; $axis++) {
+                    $result = 0;
+                    $shift = 0;
+                    do {
+                        if ($index >= $encodedLength) {
+                            throw new \RuntimeException('OpenRouteService returned invalid route geometry.');
+                        }
+
+                        $byte = ord($encodedGeometry[$index++]) - 63;
+                        if ($byte < 0 || $byte > 63) {
+                            throw new \RuntimeException('OpenRouteService returned invalid route geometry.');
+                        }
+
+                        $result |= ($byte & 0x1f) << $shift;
+                        $shift += 5;
+                    } while ($byte >= 0x20);
+
+                    $deltas[] = ($result & 1) ? ~($result >> 1) : ($result >> 1);
+                }
+
+                $latitude += $deltas[0];
+                $longitude += $deltas[1];
+                $coordinates[] = [$longitude / 100000, $latitude / 100000];
+            }
+        } elseif (is_array($encodedGeometry)) {
+            $coordinates = $encodedGeometry;
+        }
+
+        if (!is_array($coordinates) || $coordinates === []) {
+            throw new \RuntimeException('OpenRouteService response contains no route geometry.');
+        }
+
+        $waypoints = [];
+        foreach ($coordinates as $coordinate) {
+            if (!is_array($coordinate) || !isset($coordinate[0], $coordinate[1]) ||
+                !is_numeric($coordinate[0]) || !is_numeric($coordinate[1])) {
+                throw new \RuntimeException('OpenRouteService returned invalid route geometry.');
+            }
+
+            $waypoints[] = ['lat' => (float)$coordinate[1], 'lng' => (float)$coordinate[0]];
+        }
+
+        return $waypoints;
+    }
+
+    private function buildAlternativeRoutes(array $response, array $trip, array $loc, array $primaryWaypoints): array
+    {
+        $candidates = [];
+        $routeFormat = 'routes';
+        $orsRoutes = $response['routes'] ?? null;
+        if (is_array($orsRoutes)) {
+            foreach ($orsRoutes as $index => $route) {
+                if (is_array($route)) {
+                    $candidates[] = ['index' => (int)$index, 'route' => $route];
+                }
+            }
+        }
+
+        if ($candidates === []) {
+            $routeFormat = 'features';
+            $features = $response['features'] ?? null;
+            if (is_array($features)) {
+                foreach ($features as $index => $feature) {
+                    if (is_array($feature)) {
+                        $candidates[] = ['index' => (int)$index, 'route' => $feature];
+                    }
+                }
+            }
+        }
+
+        // ORS returns the selected primary route first; retain that ordering in the API response.
+        if ($candidates === [] || $candidates[0]['index'] !== 0) {
+            return [];
+        }
+
+        $routeOptions = [];
+        foreach ($candidates as $candidate) {
+            if ($candidate['index'] >= 3) {
+                continue;
+            }
+
+            $route = $candidate['route'];
+            if ($routeFormat === 'routes') {
+                $summary = $route['summary'] ?? null;
+            } else {
+                $properties = $route['properties'] ?? null;
+                $summary = is_array($properties) ? ($properties['summary'] ?? null) : null;
+            }
+
+            if (!is_array($summary) || !is_numeric($summary['distance'] ?? null) ||
+                !is_numeric($summary['duration'] ?? null) || (float)$summary['distance'] < 0 ||
+                (float)$summary['duration'] < 0) {
+                continue;
+            }
+
+            if ($candidate['index'] === 0) {
+                $waypoints = $primaryWaypoints;
+            } else {
+                $candidateResponse = [$routeFormat => [$route]];
+                try {
+                    $waypoints = $this->generateRouteWaypoints($trip, $loc, $candidateResponse);
+                } catch (\RuntimeException $exception) {
+                    continue;
+                }
+            }
+
+            $timeMins = (int)round((float)$summary['duration'] / 60);
+            $routeOptions[] = [
+                'route_number' => count($routeOptions) + 1,
+                'route_index' => $candidate['index'],
+                'waypoints' => $waypoints,
+                'distance_km' => round((float)$summary['distance'] / 1000, 1),
+                'travel_time_mins' => $timeMins,
+                'formatted_travel_time' => $this->formatRouteTravelTime($timeMins),
+            ];
+        }
+
+        return $routeOptions;
     }
 
     private function haversineDistance(float $lat1, float $lon1, float $lat2, float $lon2): float
@@ -676,122 +1134,193 @@ class ApiController
         return null;
     }
 
+    private function actorCanAccessTrip(array $trip, array $actor): bool
+    {
+        return $actor['role'] === 'Admin' || DB::table('drivers')
+            ->where('id', $trip['driver_id'])
+            ->where('user_id', $actor['id'])
+            ->exists();
+    }
+
     private function ensureStorage(): void
     {
-        $dir = dirname(self::$storageFile);
-        if (!is_dir($dir)) {
-            @mkdir($dir, 0777, true);
-        }
-        if (!file_exists(self::$storageFile)) {
-            $initialState = [
-                'vehicles' => [
-                    1 => ['id' => 1, 'vehicle_code' => 'TRK-101', 'plate_number' => 'NKI-8821', 'type' => 'Heavy Cargo Truck', 'status' => 'Active', 'fuel_level' => 88.5],
-                    2 => ['id' => 2, 'vehicle_code' => 'TRK-102', 'plate_number' => 'WAK-4092', 'type' => 'Refrigerated Transport', 'status' => 'Active', 'fuel_level' => 74.0],
-                    3 => ['id' => 3, 'vehicle_code' => 'TRK-103', 'plate_number' => 'CBD-1204', 'type' => 'Container Hauler', 'status' => 'Active', 'fuel_level' => 92.0],
-                    4 => ['id' => 4, 'vehicle_code' => 'TRK-104', 'plate_number' => 'NKL-3301', 'type' => 'Delivery Van', 'status' => 'Maintenance', 'fuel_level' => 45.0],
-                ],
-                'drivers' => [
-                    1 => ['id' => 1, 'name' => 'Harvey Villarin', 'employee_id' => 'DRV-1001', 'role' => 'Senior Lead Driver', 'score' => 9.8],
-                    2 => ['id' => 2, 'name' => 'Jhoanna Reforsado', 'employee_id' => 'DRV-1002', 'role' => 'Regional Logistics Driver', 'score' => 9.6],
-                    3 => ['id' => 3, 'name' => 'Erwin Cober', 'employee_id' => 'DRV-1003', 'role' => 'Heavy Fleet Operator', 'score' => 9.4],
-                    4 => ['id' => 4, 'name' => 'Daniella Agus', 'employee_id' => 'DRV-1004', 'role' => 'Express Dispatcher', 'score' => 9.2],
-                ],
-                'locations' => [
-                    1 => ['latitude' => 14.5995, 'longitude' => 120.9842, 'speed' => 48.0, 'fuel_level' => 88.5, 'timestamp' => date('Y-m-d H:i:s')],
-                    2 => ['latitude' => 14.5547, 'longitude' => 121.0244, 'speed' => 22.0, 'fuel_level' => 74.0, 'timestamp' => date('Y-m-d H:i:s')],
-                    3 => ['latitude' => 14.6507, 'longitude' => 121.0275, 'speed' => 54.0, 'fuel_level' => 92.0, 'timestamp' => date('Y-m-d H:i:s')],
-                    4 => ['latitude' => 14.5300, 'longitude' => 120.9800, 'speed' => 0.0, 'fuel_level' => 45.0, 'timestamp' => date('Y-m-d H:i:s')],
-                ],
-                'trips' => [
-                    [
-                        'id' => 101,
-                        'vehicle_id' => 1,
-                        'driver_id' => 1,
-                        'origin' => 'Port Area Pier 15, Manila',
-                        'destination' => 'Quezon City Logistics Hub',
-                        'origin_lat' => 14.5880,
-                        'origin_lng' => 120.9670,
-                        'dest_lat' => 14.6500,
-                        'dest_lng' => 121.0300,
-                        'departure_time' => date('Y-m-d H:i:s', strtotime('-40 mins')),
-                        'estimated_arrival' => date('Y-m-d H:i:s', strtotime('+20 mins')),
-                        'actual_arrival' => null,
-                        'total_distance' => 18.5,
-                        'total_duration' => 60,
-                        'fuel_consumption' => 5.2,
-                        'status' => 'Active',
-                    ],
-                    [
-                        'id' => 102,
-                        'vehicle_id' => 2,
-                        'driver_id' => 2,
-                        'origin' => 'Makati Central Terminal',
-                        'destination' => 'Pasig Industrial Estate',
-                        'origin_lat' => 14.5547,
-                        'origin_lng' => 121.0244,
-                        'dest_lat' => 14.5764,
-                        'dest_lng' => 121.0851,
-                        'departure_time' => date('Y-m-d H:i:s', strtotime('-25 mins')),
-                        'estimated_arrival' => date('Y-m-d H:i:s', strtotime('+35 mins')),
-                        'actual_arrival' => null,
-                        'total_distance' => 14.2,
-                        'total_duration' => 60,
-                        'fuel_consumption' => 4.1,
-                        'status' => 'Delayed',
-                    ],
-                    [
-                        'id' => 103,
-                        'vehicle_id' => 3,
-                        'driver_id' => 3,
-                        'origin' => 'North Port Terminal',
-                        'destination' => 'Bulacan Freight Center',
-                        'origin_lat' => 14.6200,
-                        'origin_lng' => 120.9600,
-                        'dest_lat' => 14.8000,
-                        'dest_lng' => 120.9000,
-                        'departure_time' => date('Y-m-d H:i:s', strtotime('-15 mins')),
-                        'estimated_arrival' => date('Y-m-d H:i:s', strtotime('+45 mins')),
-                        'actual_arrival' => null,
-                        'total_distance' => 32.0,
-                        'total_duration' => 60,
-                        'fuel_consumption' => 8.9,
-                        'status' => 'Active',
-                    ]
-                ],
-                'notifications' => [
-                    [
-                        'id' => 1,
-                        'trip_id' => 102,
-                        'vehicle_id' => 2,
-                        'type' => 'Traffic delay',
-                        'message' => 'Traffic delay detected on C-5 Pasig segment (+14 mins).',
-                        'severity' => 'warning',
-                        'created_at' => date('Y-m-d H:i:s', strtotime('-10 mins')),
-                    ],
-                    [
-                        'id' => 2,
-                        'trip_id' => 101,
-                        'vehicle_id' => 1,
-                        'type' => 'Vehicle arrived',
-                        'message' => 'Vehicle TRK-100 arrived at Manila Bay Depot.',
-                        'severity' => 'info',
-                        'created_at' => date('Y-m-d H:i:s', strtotime('-1 hr')),
-                    ]
-                ]
-            ];
-            file_put_contents(self::$storageFile, json_encode($initialState, JSON_PRETTY_PRINT));
-        }
+        // Legacy no-op: the fleet is backed directly by the database now.
     }
 
     private function getFleetState(): array
     {
-        $raw = file_get_contents(self::$storageFile);
-        return json_decode($raw, true) ?: [];
+        $vehicles = [];
+        foreach (DB::table('vehicles')->get() as $v) {
+            $vehicles[(int)$v->id] = [
+                'id' => (int)$v->id,
+                'vehicle_code' => $v->vehicle_code ?? ($v->name ?? (string)$v->id),
+                'plate_number' => $v->plate_number,
+                'type' => $v->type,
+                'status' => $v->status,
+                'fuel_level' => (float)$v->fuel_level,
+            ];
+        }
+
+        $drivers = [];
+        foreach (DB::table('drivers')->leftJoin('users', 'drivers.user_id', '=', 'users.id')->get(['drivers.*', 'users.name as user_name']) as $d) {
+            $drivers[(int)$d->id] = [
+                'id' => (int)$d->id,
+                'name' => $d->user_name ?: ($d->name ?? 'Driver'),
+                'employee_id' => $d->employee_id,
+                'role' => $d->role,
+                'score' => (float)$d->score,
+            ];
+        }
+
+        $locations = [];
+        foreach (DB::table('location_logs')->orderByDesc('timestamp')->orderByDesc('id')->get() as $l) {
+            $vehicleId = (int)$l->vehicle_id;
+            if (isset($locations[$vehicleId])) {
+                continue;
+            }
+            $locations[$vehicleId] = [
+                'latitude' => $l->latitude !== null ? (float)$l->latitude : null,
+                'longitude' => $l->longitude !== null ? (float)$l->longitude : null,
+                'speed' => (float)($l->speed ?? 0),
+                'fuel_level' => $l->fuel_level !== null ? (float)$l->fuel_level : null,
+                'timestamp' => (string)$l->timestamp,
+            ];
+        }
+
+        $trips = [];
+        foreach (DB::table('trip_records')->get() as $t) {
+            $trips[] = [
+                'id' => (int)$t->id,
+                'vehicle_id' => (int)$t->vehicle_id,
+                'driver_id' => (int)$t->driver_id,
+                'origin' => $t->origin,
+                'destination' => $t->destination,
+                'origin_lat' => $t->origin_lat !== null ? (float)$t->origin_lat : null,
+                'origin_lng' => $t->origin_lng !== null ? (float)$t->origin_lng : null,
+                'dest_lat' => $t->dest_lat !== null ? (float)$t->dest_lat : null,
+                'dest_lng' => $t->dest_lng !== null ? (float)$t->dest_lng : null,
+                'departure_time' => (string)$t->departure_time,
+                'estimated_arrival' => $t->estimated_arrival !== null ? (string)$t->estimated_arrival : null,
+                'actual_arrival' => $t->actual_arrival !== null ? (string)$t->actual_arrival : null,
+                'total_distance' => $t->total_distance !== null ? (float)$t->total_distance : 0.0,
+                'total_duration' => (int)($t->total_duration ?? 0),
+                'fuel_consumption' => $t->fuel_consumption !== null ? (float)$t->fuel_consumption : 0.0,
+                'status' => $t->status,
+            ];
+        }
+
+        $notifications = [];
+        foreach (DB::table('alerts')->orderByDesc('id')->limit(50)->get() as $a) {
+            $notifications[] = [
+                'id' => (int)$a->id,
+                'trip_id' => $a->trip_record_id !== null ? (int)$a->trip_record_id : null,
+                'vehicle_id' => $a->vehicle_id !== null ? (int)$a->vehicle_id : null,
+                'type' => $a->type ?: ($a->title ?: 'Notice'),
+                'message' => $a->message ?: ($a->detail ?: ''),
+                'severity' => $a->severity ?? 'info',
+                'created_at' => (string)$a->created_at,
+            ];
+        }
+        $notifications = array_reverse($notifications);
+
+        return [
+            'vehicles' => $vehicles,
+            'drivers' => $drivers,
+            'locations' => $locations,
+            'trips' => $trips,
+            'notifications' => $notifications,
+        ];
     }
 
     private function saveFleetState(array $state): void
     {
-        file_put_contents(self::$storageFile, json_encode($state, JSON_PRETTY_PRINT));
+        // Deprecated: state mutations are persisted directly via DB updates.
+    }
+
+    /**
+     * Geocode a free-text address with the existing OpenRouteService key.
+     * Returns ['lat' => float, 'lng' => float] or null.
+     */
+    private function geocodeAddress(string $address): ?array
+    {
+        return app(OpenRouteServiceGeocoder::class)->geocode($address);
+    }
+
+    /**
+     * Ensure a trip has origin/destination coordinates; geocode missing ones
+     * and persist them to the trip record (and linked dispatch).
+     *
+     * @return array{origin_lat: float, origin_lng: float, dest_lat: float, dest_lng: float}|null
+     */
+    private function ensureTripCoordinates(array $trip): ?array
+    {
+        $geocoder = app(OpenRouteServiceGeocoder::class);
+        $originLat = $trip['origin_lat'] ?? null;
+        $originLng = $trip['origin_lng'] ?? null;
+        $destLat = $trip['dest_lat'] ?? null;
+        $destLng = $trip['dest_lng'] ?? null;
+
+        $hasOrigin = $geocoder->hasValidCoordinates($originLat, $originLng);
+        $hasDest = $geocoder->hasValidCoordinates($destLat, $destLng);
+        $failedLocations = [];
+
+        if (!$hasOrigin && !empty($trip['origin'])) {
+            $geo = $this->geocodeAddress((string)$trip['origin']);
+            if ($geo !== null) {
+                $originLat = $geo['lat'];
+                $originLng = $geo['lng'];
+                $hasOrigin = true;
+            }
+        }
+        if (!$hasDest && !empty($trip['destination'])) {
+            $geo = $this->geocodeAddress((string)$trip['destination']);
+            if ($geo !== null) {
+                $destLat = $geo['lat'];
+                $destLng = $geo['lng'];
+                $hasDest = true;
+            }
+        }
+
+        if (!$hasOrigin) {
+            $failedLocations[] = 'origin';
+        }
+        if (!$hasDest) {
+            $failedLocations[] = 'destination';
+        }
+        if ($failedLocations !== []) {
+            Log::warning('Unable to geocode TripRecord location(s).', [
+                'trip_record_id' => $trip['id'] ?? null,
+                'failed_locations' => $failedLocations,
+                'origin' => $trip['origin'] ?? null,
+                'destination' => $trip['destination'] ?? null,
+            ]);
+            return null;
+        }
+
+        DB::table('trip_records')->where('id', $trip['id'])->update([
+            'origin_lat' => $originLat,
+            'origin_lng' => $originLng,
+            'dest_lat' => $destLat,
+            'dest_lng' => $destLng,
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        if (!empty($trip['dispatch_id'])) {
+            DB::table('dispatches')->where('id', $trip['dispatch_id'])->update([
+                'origin_lat' => $originLat,
+                'origin_lng' => $originLng,
+                'dest_lat' => $destLat,
+                'dest_lng' => $destLng,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+        }
+
+        return [
+            'origin_lat' => (float)$originLat,
+            'origin_lng' => (float)$originLng,
+            'dest_lat' => (float)$destLat,
+            'dest_lng' => (float)$destLng,
+        ];
     }
 
     private function jsonResponse(array $data, int $code = 200): void
@@ -823,26 +1352,55 @@ class ApiController
      */
     private function buildDriverDataset(): array
     {
-        $seed = [
-            ['id'=>1,'name'=>'Harvey Villarin',  'eid'=>'DRV-1001','role'=>'Senior Lead Driver',       'on_time'=>97,'fuel'=>89,'safety'=>96,'attendance'=>98,'trips'=>124,'completed'=>122,'delayed'=>2, 'km_l'=>10.4,'risk'=>'Low'],
-            ['id'=>2,'name'=>'Jhoanna Reforsado',  'eid'=>'DRV-1002','role'=>'Regional Logistics Driver','on_time'=>94,'fuel'=>87,'safety'=>93,'attendance'=>96,'trips'=>111,'completed'=>108,'delayed'=>3, 'km_l'=>9.9, 'risk'=>'Low'],
-            ['id'=>3,'name'=>'Erwin Cover Jr.',   'eid'=>'DRV-1003','role'=>'Heavy Fleet Operator',     'on_time'=>90,'fuel'=>85,'safety'=>90,'attendance'=>94,'trips'=>98, 'completed'=>94, 'delayed'=>4, 'km_l'=>9.5, 'risk'=>'Low'],
-            ['id'=>4,'name'=>'Daniella Agus',     'eid'=>'DRV-1004','role'=>'Express Dispatcher',       'on_time'=>88,'fuel'=>83,'safety'=>87,'attendance'=>92,'trips'=>87, 'completed'=>82, 'delayed'=>5, 'km_l'=>9.1, 'risk'=>'Medium'],
-            ['id'=>5,'name'=>'Joanna Reforsado',  'eid'=>'DRV-1005','role'=>'Senior Driver',             'on_time'=>85,'fuel'=>80,'safety'=>84,'attendance'=>90,'trips'=>76, 'completed'=>70, 'delayed'=>6, 'km_l'=>8.8, 'risk'=>'Medium'],
-            ['id'=>6,'name'=>'Marco Santos',      'eid'=>'DRV-1006','role'=>'Route Specialist',          'on_time'=>81,'fuel'=>78,'safety'=>80,'attendance'=>88,'trips'=>65, 'completed'=>59, 'delayed'=>6, 'km_l'=>8.5, 'risk'=>'Medium'],
-            ['id'=>7,'name'=>'Liza Mercado',      'eid'=>'DRV-1007','role'=>'City Courier',              'on_time'=>77,'fuel'=>74,'safety'=>76,'attendance'=>86,'trips'=>54, 'completed'=>47, 'delayed'=>7, 'km_l'=>8.1, 'risk'=>'Medium'],
-            ['id'=>8,'name'=>'Bong Dela Cruz',    'eid'=>'DRV-1008','role'=>'Night Shift Driver',        'on_time'=>70,'fuel'=>67,'safety'=>70,'attendance'=>78,'trips'=>43, 'completed'=>36, 'delayed'=>7, 'km_l'=>7.6, 'risk'=>'High'],
-            ['id'=>9,'name'=>'Tess Gonzales',     'eid'=>'DRV-1009','role'=>'Utility Driver',            'on_time'=>64,'fuel'=>61,'safety'=>63,'attendance'=>74,'trips'=>38, 'completed'=>30, 'delayed'=>8, 'km_l'=>7.2, 'risk'=>'High'],
-            ['id'=>10,'name'=>'Raul Dizon',       'eid'=>'DRV-1010','role'=>'Trainee Driver',             'on_time'=>57,'fuel'=>54,'safety'=>56,'attendance'=>70,'trips'=>28, 'completed'=>20, 'delayed'=>8, 'km_l'=>6.8, 'risk'=>'High'],
-        ];
+        $rows = DB::table('drivers')
+            ->leftJoin('users', 'drivers.user_id', '=', 'users.id')
+            ->leftJoin('trip_records', 'trip_records.driver_id', '=', 'drivers.id')
+            ->select(
+                'drivers.id',
+                'users.name as user_name',
+                'drivers.name as driver_name',
+                'drivers.employee_id as eid',
+                'drivers.role',
+                'drivers.status',
+                'drivers.score',
+                DB::raw('COUNT(trip_records.id) as trips'),
+                DB::raw("SUM(CASE WHEN trip_records.status = 'Completed' THEN 1 ELSE 0 END) as completed"),
+                DB::raw("SUM(CASE WHEN trip_records.status IS NOT NULL AND LOWER(trip_records.status) LIKE '%delay%' THEN 1 ELSE 0 END) as delayed"),
+                DB::raw('COALESCE(SUM(trip_records.total_distance), 0) as distance'),
+                DB::raw('COALESCE(SUM(trip_records.fuel_consumption), 0) as fuel')
+            )
+            ->groupBy('drivers.id', 'users.name', 'drivers.name', 'drivers.employee_id', 'drivers.role', 'drivers.status', 'drivers.score')
+            ->orderByDesc('drivers.score')
+            ->get();
 
-        foreach ($seed as $i => &$d) {
-            $d['score'] = $this->computeDriverScore($d['on_time'], $d['fuel'], $d['safety'], $d['attendance']);
-            $d['rank']  = $i + 1;
+        $dataset = [];
+        foreach ($rows as $i => $row) {
+            $name = $row->user_name ?: ($row->driver_name ?: 'Driver');
+            $score = (float)($row->score ?? 0);
+            $distance = (float)$row->distance;
+            $fuel = (float)$row->fuel;
+
+            $dataset[] = [
+                'id' => (int)$row->id,
+                'name' => $name,
+                'eid' => $row->eid,
+                'role' => $row->role,
+                'status' => $row->status,
+                'on_time' => 0,
+                'fuel' => 0,
+                'safety' => 0,
+                'attendance' => 0,
+                'trips' => (int)$row->trips,
+                'completed' => (int)$row->completed,
+                'delayed' => (int)$row->delayed,
+                'km_l' => $fuel > 0 ? round($distance / $fuel, 1) : 0,
+                'risk' => $score >= 90 ? 'Low' : ($score >= 70 ? 'Medium' : 'High'),
+                'score' => round($score, 1),
+                'rank' => $i + 1,
+            ];
         }
-        unset($d);
 
-        return $seed;
+        return $dataset;
     }
 
     /**
@@ -851,30 +1409,66 @@ class ApiController
      */
     public function getDriverDashboard(): void
     {
-        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin']);
+        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin', 'User']);
         $drivers = $this->buildDriverDataset();
+
+        if (empty($drivers)) {
+            $this->jsonResponse([
+                'success' => true,
+                'kpis' => [
+                    'total_drivers'   => 0,
+                    'active_drivers'  => 0,
+                    'avg_score'       => 0,
+                    'top_driver'      => ['name' => 'N/A', 'score' => 0, 'id' => ''],
+                    'lowest_driver'   => ['name' => 'N/A', 'score' => 0, 'id' => ''],
+                    'total_trips'     => 0,
+                ],
+                'monthly_trend' => ['labels' => [], 'scores' => [], 'trips' => [], 'km_l' => []],
+            ]);
+            return;
+        }
 
         $scores    = array_column($drivers, 'score');
         $avgScore  = round(array_sum($scores) / count($scores), 1);
         $top       = $drivers[0];
         $lowest    = $drivers[count($drivers) - 1];
         $totalTrips= array_sum(array_column($drivers, 'trips'));
+        $activeDrivers = count(array_filter($drivers, fn($d) => strtolower((string)($d['status'] ?? '')) === 'active'));
+
+        // Build real monthly aggregates from trips.
+        $trendLabels = [];
+        $trendScores = [];
+        $trendTrips  = [];
+        $trendKmL    = [];
+        for ($i = 7; $i >= 0; $i--) {
+            $monthStart = date('Y-m-01', strtotime("first day of -{$i} month"));
+            $monthEnd   = date('Y-m-t', strtotime($monthStart));
+            $agg = DB::table('trip_records')
+                ->whereBetween('created_at', [$monthStart . ' 00:00:00', $monthEnd . ' 23:59:59'])
+                ->selectRaw('COUNT(*) as trips, COALESCE(SUM(total_distance),0) as distance, COALESCE(SUM(fuel_consumption),0) as fuel')
+                ->first();
+
+            $trendLabels[] = date('M', strtotime($monthStart));
+            $trendScores[] = $avgScore;
+            $trendTrips[]  = (int)($agg->trips ?? 0);
+            $trendKmL[]    = ($agg->fuel ?? 0) > 0 ? round(((float)$agg->distance) / (float)$agg->fuel, 1) : 0;
+        }
 
         $this->jsonResponse([
             'success' => true,
             'kpis' => [
                 'total_drivers'   => count($drivers),
-                'active_drivers'  => 8,
+                'active_drivers'  => $activeDrivers,
                 'avg_score'       => $avgScore,
                 'top_driver'      => ['name' => $top['name'], 'score' => $top['score'], 'id' => $top['eid']],
                 'lowest_driver'   => ['name' => $lowest['name'], 'score' => $lowest['score'], 'id' => $lowest['eid']],
                 'total_trips'     => $totalTrips,
             ],
             'monthly_trend' => [
-                'labels' => ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug'],
-                'scores' => [82,84,83,87,89,91,90,93],
-                'trips'  => [88,92,86,102,110,118,112,124],
-                'km_l'   => [9.1,9.3,9.0,9.5,9.7,10.1,9.9,10.4],
+                'labels' => $trendLabels,
+                'scores' => $trendScores,
+                'trips'  => $trendTrips,
+                'km_l'   => $trendKmL,
             ],
         ]);
     }
@@ -884,7 +1478,7 @@ class ApiController
      */
     public function getDriverRankings(): void
     {
-        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin']);
+        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin', 'User']);
         $period = $_GET['period'] ?? 'monthly';
         $type   = $_GET['type']   ?? 'top';
         $limit  = (int)($_GET['limit'] ?? 10);
@@ -910,7 +1504,7 @@ class ApiController
      */
     public function getDriverPerformance(int $driverId): void
     {
-        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin']);
+        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin', 'User']);
         $drivers = $this->buildDriverDataset();
 
         $driver = null;
@@ -942,19 +1536,16 @@ class ApiController
      */
     public function getDriverAnalytics(): void
     {
-        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin']);
+        $this->authorizeRole(['Driver', 'Dispatcher', 'Logistics Officer', 'Admin', 'User']);
         $drivers = $this->buildDriverDataset();
 
         $fuelRanking = $drivers;
         usort($fuelRanking, fn($a, $b) => $b['km_l'] <=> $a['km_l']);
 
-        $safetyEvents = [
-            ['type' => 'Overspeeding',       'count' => 12],
-            ['type' => 'Route Deviation',    'count' => 7],
-            ['type' => 'Excessive Idle',     'count' => 18],
-            ['type' => 'Traffic Violation',  'count' => 4],
-            ['type' => 'Near-Miss',          'count' => 3],
-        ];
+        $safetyEvents = [];
+
+        $totalPresent   = count($drivers);
+        $activeDrivers  = count(array_filter($drivers, fn($d) => strtolower((string)($d['status'] ?? '')) === 'active'));
 
         $this->jsonResponse([
             'success'        => true,
@@ -962,9 +1553,9 @@ class ApiController
             'fuel_ranking'   => array_map(fn($d) => ['name' => $d['name'], 'km_l' => $d['km_l'], 'risk' => $d['risk']], $fuelRanking),
             'safety_events'  => $safetyEvents,
             'attendance'     => [
-                'present_rate'  => 94.0,
-                'absent_rate'   => 4.0,
-                'on_leave_rate' => 2.0,
+                'present_rate'  => $totalPresent > 0 ? round(($activeDrivers / $totalPresent) * 100, 1) : 0,
+                'absent_rate'   => 0.0,
+                'on_leave_rate' => 0.0,
             ],
         ]);
     }
@@ -974,7 +1565,7 @@ class ApiController
      */
     public function getDriverReports(): void
     {
-        $this->authorizeRole(['Dispatcher', 'Logistics Officer', 'Admin']);
+        $this->authorizeRole(['Dispatcher', 'Logistics Officer', 'Admin', 'User']);
         $type   = $_GET['type']   ?? 'monthly';
         $format = $_GET['format'] ?? 'json';
         $drivers = $this->buildDriverDataset();
@@ -985,9 +1576,9 @@ class ApiController
             'period'       => $type === 'daily' ? date('Y-m-d') : ($type === 'weekly' ? date('Y-\WW') : date('Y-m')),
             'summary'      => [
                 'total_drivers'  => count($drivers),
-                'avg_score'      => round(array_sum(array_column($drivers, 'score')) / count($drivers), 1),
+                'avg_score'      => count($drivers) > 0 ? round(array_sum(array_column($drivers, 'score')) / count($drivers), 1) : 0,
                 'total_trips'    => array_sum(array_column($drivers, 'trips')),
-                'fleet_km_l'     => round(array_sum(array_column($drivers, 'km_l')) / count($drivers), 2),
+                'fleet_km_l'     => count($drivers) > 0 ? round(array_sum(array_column($drivers, 'km_l')) / count($drivers), 2) : 0,
             ],
             'drivers' => $drivers,
         ];

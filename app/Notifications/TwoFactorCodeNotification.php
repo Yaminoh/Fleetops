@@ -2,15 +2,11 @@
 
 namespace App\Notifications;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\MailMessage;
+use App\Notifications\Channels\BrevoApiChannel;
 use Illuminate\Notifications\Notification;
 
 class TwoFactorCodeNotification extends Notification
 {
-    use Queueable;
-
     public function __construct(private readonly string $code, private readonly int $validForMinutes)
     {
         //
@@ -23,19 +19,29 @@ class TwoFactorCodeNotification extends Notification
      */
     public function via(object $notifiable): array
     {
-        return ['mail'];
+        return [BrevoApiChannel::class];
     }
 
-    /**
-     * Get the mail representation of the notification.
-     */
-    public function toMail(object $notifiable): MailMessage
+    public function toBrevo(): array
     {
-        return (new MailMessage)
-            ->subject('Your sign-in verification code')
-            ->greeting('Verify it\'s you')
-            ->line("Your verification code is: **{$this->code}**")
-            ->line("This code expires in {$this->validForMinutes} minutes.")
-            ->line('If you did not attempt to sign in, you can ignore this email.');
+        $escapedCode = htmlspecialchars($this->code, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $expiry = "This code expires in {$this->validForMinutes} minutes.";
+        $notice = 'If you did not attempt to sign in, you can ignore this email.';
+
+        return [
+            'subject' => 'Your sign-in verification code',
+            'textContent' => implode("\n\n", [
+                "Verify it's you",
+                "Your verification code is: {$this->code}",
+                $expiry,
+                $notice,
+            ]),
+            'htmlContent' => implode('', [
+                '<p>Verify it\'s you</p>',
+                '<p>Your verification code is: <strong>'.$escapedCode.'</strong></p>',
+                '<p>'.$expiry.'</p>',
+                '<p>'.$notice.'</p>',
+            ]),
+        ];
     }
 }

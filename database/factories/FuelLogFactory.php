@@ -25,7 +25,7 @@ class FuelLogFactory extends Factory
                 ? Dispatch::query()->inRandomOrder()->value('id')
                 : null,
             'liters' => $this->faker->randomFloat(2, 10, 200),
-            'cost' => $this->faker->optional()->randomFloat(2, 500, 10000),
+            'cost' => $this->faker->randomFloat(2, 500, 10000),
             'logged_at' => $this->faker->dateTimeBetween('-6 months', 'now'),
             'receipt_image' => $this->faker->optional()->filePath(),
         ];

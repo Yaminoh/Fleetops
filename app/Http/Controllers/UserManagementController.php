@@ -11,7 +11,7 @@ use Illuminate\Validation\Rule;
 
 class UserManagementController extends Controller
 {
-    private const ROLES = ['Admin', 'Manager', 'Dispatcher', 'Accountant', 'Staff'];
+    private const ROLES = ['User', 'Admin'];
 
     public function store(Request $request): RedirectResponse
     {
@@ -25,10 +25,12 @@ class UserManagementController extends Controller
             'status' => ['required', Rule::in(['active', 'inactive'])],
         ]);
 
+        $passwordField = User::passwordColumnName();
+
         User::create([
             'name' => $data['name'],
             'email' => strtolower($data['email']),
-            'password' => Hash::make($data['password']),
+            $passwordField => Hash::make($data['password']),
             'role' => $data['role'],
             'status' => $data['status'],
         ]);
@@ -41,6 +43,29 @@ class UserManagementController extends Controller
     public function update(Request $request, User $user): RedirectResponse
     {
         $this->authorizeAdmin($request);
+
+        if ($request->boolean('status_toggle')) {
+            if ($user->id === $request->user()->id) {
+                return back()->withErrors(['user' => 'You cannot change your own account status.']);
+            }
+
+            $data = $request->validate([
+                'status' => ['required', Rule::in(['active', 'inactive'])],
+            ]);
+
+            $user->status = $data['status'];
+            $user->save();
+
+            $status = $user->status;
+            Alert::log(
+                $status === 'inactive' ? 'OFF' : 'ON',
+                $status === 'inactive' ? 'User Deactivated' : 'User Reactivated',
+                "{$user->name}'s account was marked {$status} by {$request->user()->name}.",
+                $status === 'inactive' ? 'warning' : 'info',
+            );
+
+            return back()->with('status', "User account {$status} successfully.");
+        }
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:100'],
@@ -56,7 +81,7 @@ class UserManagementController extends Controller
         $user->status = $data['status'];
 
         if (! empty($data['password'])) {
-            $user->password = Hash::make($data['password']);
+            $user->{User::passwordColumnName()} = Hash::make($data['password']);
         }
 
         $user->save();
@@ -64,22 +89,6 @@ class UserManagementController extends Controller
         Alert::log('✏️', 'User Updated', "{$user->name}'s account was updated by {$request->user()->name}.");
 
         return back()->with('status', 'User updated successfully.');
-    }
-
-    public function destroy(Request $request, User $user): RedirectResponse
-    {
-        $this->authorizeAdmin($request);
-
-        if ($user->id === $request->user()->id) {
-            return back()->withErrors(['user' => 'You cannot delete your own account.']);
-        }
-
-        $userName = $user->name;
-        $user->delete();
-
-        Alert::log('🗑️', 'User Removed', "{$userName}'s account was deleted by {$request->user()->name}.", 'warning');
-
-        return back()->with('status', 'User deleted successfully.');
     }
 
     private function authorizeAdmin(Request $request): void

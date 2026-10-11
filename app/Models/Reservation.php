@@ -13,7 +13,7 @@ class Reservation extends Model
     protected $fillable = [
         'reservation_no', 'employee_id', 'destination', 'purpose', 
         'requested_date', 'requested_time', 'vehicle_type', 
-        'passenger_count', 'remarks', 'status', 'approved_by', 'approved_at',
+        'passenger_count', 'remarks', 'status', 'approved_by', 'approved_at', 'user_id',
     ];
 
     protected function casts(): array
@@ -27,6 +27,11 @@ class Reservation extends Model
     public function approver()
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function requester()
+    {
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     public function dispatches()

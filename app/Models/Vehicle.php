@@ -10,9 +10,7 @@ class Vehicle extends Model
 {
     use HasFactory;
 
-    public $timestamps = false;
-
-    protected $fillable = ['vehicle_code', 'plate_number', 'name', 'status', 'type', 'fuel_level'];
+    protected $fillable = ['vehicle_code', 'plate_number', 'name', 'status', 'type', 'fuel_level', 'odometer'];
 
     public function fuelLogs(): HasMany
     {
