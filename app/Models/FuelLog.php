@@ -10,7 +10,7 @@ class FuelLog extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['user_id', 'vehicle_id', 'driver_id', 'liters', 'cost', 'fuel_level_before', 'fuel_level_after', 'logged_at', 'receipt_image'];
+    protected $fillable = ['user_id', 'vehicle_id', 'driver_id', 'liters', 'cost', 'fuel_level_before', 'fuel_level_after', 'fuel_level_before_image', 'fuel_level_after_image', 'logged_at', 'receipt_image'];
 
     protected function casts(): array
     {
